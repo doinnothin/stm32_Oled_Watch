@@ -1,0 +1,36 @@
+# ---- Keil / MDK 编译产物 ----
+*.o
+*.d
+*.crf
+*.axf
+*.hex
+*.bin
+*.elf
+*.lst
+*.map
+*.htm
+*.lnp
+*.dep
+*.dep/*
+*.uvguix.*
+Objects/
+Listings/
+build/
+DebugConfig/
+RTE/_*/
+
+# ---- EIDE / 编辑器本地配置 ----
+.eide/log/
+.eide.usr.ctx.json
+.vscode/launch.json
+.vscode/settings.json
+
+# ---- 本地依赖 / 缓存（体积大，不入库）----
+.cmsis/
+.pack/
+.history/
+
+# ---- 系统文件 ----
+Thumbs.db
+desktop.ini
+.DS_Store
