@@ -44,6 +44,11 @@ static bool        g_needUpdate = false;
 static bool        g_web = false;
 static volatile int g_keyPending = 0;   /* 网页虚拟按键：先记下，后台再发串口，避免 HTTP 卡住 */
 
+/* 实时状态（供 /status） */
+static uint32_t g_lastEpoch = 0, g_lastOkMs = 0;
+static int      g_lastCode = -1, g_lastTemp = 0, g_lastDays = 0;
+static uint16_t g_okCount = 0, g_failCount = 0;
+
 /* ============================ 一般不用改 ============================ */
 #define STM32_TX_PIN  4          // ESP32-C3 的 TX，接 STM32 的 RX(PA3)
 #define STM32_RX_PIN  3          // ESP32-C3 的 RX，接 STM32 的 TX(PA2)
@@ -317,6 +322,7 @@ static void doUpdate()
 
   if (WiFi.status() != WL_CONNECTED)
   {
+    g_failCount++;
     sendLine(false, 0, 0, 0);
     return;
   }
@@ -332,6 +338,7 @@ static void doUpdate()
      STM32 会保留上一次的天气显示，但时间照样校准 */
   if (!tok)
   {
+    g_failCount++;
     sendLine(false, 0, 0, 0);
     Serial.println("发送 -> 时间获取失败");
     return;
@@ -339,6 +346,11 @@ static void doUpdate()
   if (!wok) { wcode = -1; temp = 0; }
 
   sendLine(true, epoch, wcode, temp);
+  g_lastEpoch = epoch;
+  g_lastCode  = wcode;
+  g_lastTemp  = temp;
+  g_lastOkMs  = millis();
+  g_okCount++;
   Serial.printf("发送 -> utc=%lu  code=%d  temp=%d%s\r\n",
                 (unsigned long)epoch, wcode, temp, wok ? "" : "  (天气本次失败)");
 
@@ -370,6 +382,7 @@ static void doUpdate()
       }
 
       Serial.printf("预报 -> n=%d  %d/%d/%d ...\r\n", fn, fhi[0], flo[0], fcode[0]);
+      g_lastDays = fn;
     }
     else
     {
@@ -390,7 +403,7 @@ static String pageHtml()
   h += "button{padding:14px 22px;margin:6px;font-size:18px;border:0;border-radius:10px;background:#2d7ef7;color:#fff}";
   h += ".row{display:flex;justify-content:center;flex-wrap:wrap}</style></head><body>";
   h += "<h2>STM32 手表 · ESP32-C3</h2>";
-  h += "<p>已连接：" + WiFi.localIP().toString() + " · RSSI " + String(WiFi.RSSI()) + " dBm</p>";
+  h += "<h3>实时状态</h3><pre id='st' style='background:#1b1b1b;padding:10px;border-radius:8px;white-space:pre-wrap;margin:0'>加载中…</pre>";
 
   h += "<h3>城市 / 天气设置</h3><form method='POST' action='/save'>";
   h += "城市拼音(如 guangzhou)<input name='city' value='" + g_city + "'>";
@@ -402,11 +415,32 @@ static String pageHtml()
   h += "<button onclick=\"k('3')\">● 确认</button>";
   h += "<button onclick=\"k('2')\">▼ 下</button></div>";
   h += "<p style='color:#888'>点按钮 = 在 STM32 上模拟一次对应按键 · OTA 主机名 " OTA_HOST "</p>";
-  h += "<script>function k(v){fetch('/key?k='+v);}</script></body></html>";
+  h += "<script>function k(v){fetch('/key?k='+v);}";
+  h += "function rs(){fetch('/status').then(r=>r.json()).then(d=>{";
+  h += "document.getElementById('st').textContent=";
+  h += "'IP: '+d.ip+'\\n信号: '+d.rssi+' dBm\\n运行: '+d.uptime+' s\\n城市: '+d.city";
+  h += "+'\\n天气码: '+d.code+'  温度: '+d.temp+'C\\n预报天数: '+d.days";
+  h += "+'\\n距上次成功: '+d.lastOkAgo+' s\\n成功: '+d.ok+'  失败: '+d.fail;";
+  h += "});} rs();setInterval(rs,2000);</script></body></html>";
   return h;
 }
 
 static void handleRoot() { server.send(200, "text/html", pageHtml()); }
+
+/* /status：返回 C3 侧实时状态 JSON */
+static void handleStatus()
+{
+  char buf[320];
+  uint32_t up  = millis() / 1000UL;
+  uint32_t ago = g_lastOkMs ? (millis() - g_lastOkMs) / 1000UL : 0;
+  snprintf(buf, sizeof(buf),
+           "{\"ip\":\"%s\",\"rssi\":%d,\"uptime\":%lu,\"city\":\"%s\",\"code\":%d,"
+           "\"temp\":%d,\"days\":%d,\"lastOkAgo\":%lu,\"ok\":%u,\"fail\":%u}",
+           WiFi.localIP().toString().c_str(), WiFi.RSSI(), (unsigned long)up,
+           g_city.c_str(), g_lastCode, g_lastTemp, g_lastDays,
+           (unsigned long)ago, (unsigned)g_okCount, (unsigned)g_failCount);
+  server.send(200, "application/json", buf);
+}
 
 static void handleSave()
 {
@@ -438,6 +472,7 @@ static void startWeb()
 {
   if (g_web) return;
   server.on("/", handleRoot);
+  server.on("/status", handleStatus);
   server.on("/key", handleKey);
   server.on("/save", HTTP_POST, handleSave);
   server.begin();
