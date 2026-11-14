@@ -28,10 +28,10 @@
 #include <string.h>
 
 /* ============================ 配置区（改成你自己的） ============================ */
-static const char* WIFI_SSID     = "YOUR_WIFI_SSID";      // 你的 WiFi 名称（2.4G）
-static const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";  // 你的 WiFi 密码
+static const char* WIFI_SSID     = "Lumos";      // 你的 WiFi 名称（2.4G）
+static const char* WIFI_PASSWORD = "1213812138";  // 你的 WiFi 密码
 static const char* CITY           = "guangzhou";          // 心知天气城市拼音（小写）
-static const char* SENIVERSE_KEY = "YOUR_SENIVERSE_KEY";  // 心知天气私钥（自己申请，见 README / 教程）
+static const char* SENIVERSE_KEY = "SV7rWPJJVQwUH2Eav";  // 心知天气私钥（自己申请，见 README / 教程）
 
 /* ============================ 一般不用改 ============================ */
 #define STM32_TX_PIN  4          // ESP32-C3 的 TX，接 STM32 的 RX(PA3)

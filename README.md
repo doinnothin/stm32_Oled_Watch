@@ -53,6 +53,7 @@
 - 🏠 **首页升级**：显示真实时间、当前天气/温度、步数。
 - 🌡️ **AHT20 替换 DHT11**：精度更高，移除 DHT11 驱动与页面。
 - 🚶 **新增计步**：`pedometer.c/h`，MPU6050 加速度峰谷检测。
+- 💤 **低功耗**：首页 15s 无操作 **OLED 息屏 + STM32 进 STOP**，按键(EXTI)/RTC 闹钟唤醒（`lowpower.c/h`，可测待机电流）。
 - 🔤 **字库补充**：天气/预报所需汉字（晴/雨/雷/霾/今/明/后/步…）。
 
 <a id="demo"></a>
@@ -115,7 +116,7 @@
 | GND | — | GND | **必须共地** |
 | 电源 | — | — | 建议给 C3 独立 3.3V/USB 供电（C3 峰值电流大） |
 
-> 🔎 C3 的 RX 引脚以 `esp32c3_firmware/ESP32C3_WeatherClock.ino` 里的 `STM32_RX_PIN` 定义为准（教程图中为 GPIO5）。最少只需接 **GPIO4→PA3、GND、电源** 三根即可显示。
+> 🔎 C3 的 RX 引脚以 `esp32c3_firmware/ESP32C3_WeatherClock/ESP32C3_WeatherClock.ino` 里的 `STM32_RX_PIN` 定义为准（教程图中为 GPIO5）。最少只需接 **GPIO4→PA3、GND、电源** 三根即可显示。
 > ⚡ 注意：手表上的 ME6211C33 带不动 C3 的 WiFi 峰值电流，**不要用表内稳压给 C3 供电**，否则会死机/复位。
 
 ![接线图](docs/接线图_ESP32C3_STM32.png)
@@ -188,7 +189,7 @@ $<类型>,<seq>,<数据...>*<CRC16>\r\n     // CRC16 为 4 位十六进制（大
 
 1. 开发板管理器安装 **esp32** 包，建议核心版本 **2.0.17**（新版在 C3 上有连接兼容问题）。
 2. 开发板选 **ESP32C3 Dev Module**，`USB CDC On Boot = Enabled`。
-3. 打开 `esp32c3_firmware/ESP32C3_WeatherClock.ino`，修改顶部配置：
+3. 打开 `esp32c3_firmware/ESP32C3_WeatherClock/ESP32C3_WeatherClock.ino`，修改顶部配置：
    ```cpp
    WIFI_SSID / WIFI_PASSWORD   // 你的 2.4G WiFi
    CITY                        // 城市拼音，如 guangzhou

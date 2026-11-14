@@ -22,6 +22,7 @@
 
 /*初始化函数*/
 void OLED_Init(void);
+void OLED_WriteCommand(uint8_t Command);   /* 供低功耗息屏(0xAE)/开屏(0xAF)使用 */
 
 /*更新函数*/
 void OLED_Update(void);

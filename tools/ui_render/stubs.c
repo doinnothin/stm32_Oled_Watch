@@ -101,6 +101,12 @@ void Pedometer_Update(void) {}
 uint32_t Pedometer_GetSteps(void) { return g_steps; }
 void Pedometer_Reset(void) {}
 
+/* ---------------------------------------------------------------- LowPower (host harness no-op) */
+void LowPower_Init(void) {}
+void LowPower_Isr1ms(void) {}
+void LowPower_Poll(void) {}
+uint8_t LowPower_IsOff(void) { return 0; }
+
 /* ---------------------------------------------------------------- Games (stubbed) */
 int DinoGame_Animation(void) { return 0; }
 void Dino_Tick(void) {}

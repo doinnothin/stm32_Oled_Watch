@@ -61,6 +61,8 @@ virtualFolder:
         - path: Hardware/aht20.h
         - path: Hardware/pedometer.c
         - path: Hardware/pedometer.h
+        - path: Hardware/lowpower.c
+        - path: Hardware/lowpower.h
       folders:
         - name: Library
           files:

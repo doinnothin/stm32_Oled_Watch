@@ -11,6 +11,7 @@
 #include "mpu6050.h"    
 #include "aht20.h"
 #include "pedometer.h"
+#include "lowpower.h"
 #include "dino.h"
 #include "menu_sub.h"
 #include "esp32c3.h"
@@ -95,6 +96,9 @@ int First_Page_Clock(void)
 {
     while (1) // 页面函数内部自己循环，只有按下确认键才返回
     {
+        LowPower_Poll();                 /* 首页无操作自动息屏 + STOP 休眠 */
+        if (LowPower_IsOff()) continue;  /* 息屏状态：不刷新显示 */
+
         KeyNum = Key_GetNum();
         if (KeyNum == 1) // 上一项
         {
