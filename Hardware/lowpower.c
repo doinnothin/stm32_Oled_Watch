@@ -1,5 +1,6 @@
 #include "lowpower.h"
 #include "OLED.h"
+#include "Key.h"
 #include "delay.h"
 
 /* ===== 可调参数 ===== */
@@ -78,6 +79,7 @@ void LowPower_Init(void)
 /* 进入 STOP，直到 按键 或 RTC 闹钟 唤醒 */
 static void EnterSleep(void)
 {
+    Key_Reset();                             /* 睡前清空按键事件，避免残留 */
     OLED_WriteCommand(0xAE);                 /* 关显示 */
 
     RTC_SetAlarm(RTC_GetCounter() + LP_RTC_WAKE_S);
@@ -122,9 +124,16 @@ void LowPower_Poll(void)
 
     if (KeyPressed())
     {
+        uint32_t t0 = s_ms;
         s_off = 0;                            /* 按键唤醒：亮屏 */
         s_last_active = s_ms;
         OLED_WriteCommand(0xAF);              /* 开显示（SSD1306 GDDRAM 内容仍在，直接恢复） */
+
+        /* 吞掉这次"唤醒按键"：等松手（最多 800ms）后清掉按键事件，
+           这样当前页面不会把唤醒的这一次按键再当成一次操作 */
+        while (KeyPressed() && (uint32_t)(s_ms - t0) < 800u) { }
+        Key_Reset();
+        s_last_active = s_ms;
     }
     /* 否则是 RTC 唤醒：保持 s_off=1，下一页继续睡 */
 }
