@@ -30,7 +30,7 @@
 | | 功能 | 说明 |
 |---|---|---|
 | 🕐 | **首页时钟** | 日期 + 星期 + 大字时间，实时显示天气 / 温度 / 步数 |
-| 🌤️ | **真实天气** | 心知天气实况 + **三天预报**（高/低温 + 天气），由 ESP32-C3 联网获取 |
+| 🌤️ | **真实天气** | 心知天气实况 + **三天预报**；天气页含**列表页 + 温度趋势曲线页**（KEY1/KEY2 滑动切换） |
 | 📶 | **网络校时** | ESP32-C3 走 NTP，每隔约 10 分钟自动校准 RTC |
 | 🚶 | **计步** | MPU6050 加速度模值峰谷检测，步数显示在首页 |
 | 🎞️ | **滑动菜单** | 32×32 图标横向滑动切换 |
@@ -45,7 +45,8 @@
 <a id="changelog"></a>
 ## 🆕 v2 更新记录
 
-- 🔗 **新增 ESP32-C3 联网**：WiFi + NTP 校时 + 心知天气（实况 + 三天预报），通过 UART 文本协议 `$OK / $FC` 发给 STM32。
+- 🔗 **新增 ESP32-C3 联网**：WiFi + NTP 校时 + 心知天气（实况 + 三天预报），通过 UART 文本协议 `$OK / $FC / $FD` 发给 STM32。
+- 📈 **天气页第二页**：新增**多天温度趋势曲线**（高/低温折线），KEY1/KEY2 左右滑动切换；数据来自 `$FD` 多天预报（心知免费版 3 天，付费最多 15 天，代码自动适配）。
 - 🧱 **新增分层驱动**：`Serial.c/h`、`esp32c3.c/h`、`weather.c/h`。
 - 🏠 **首页升级**：显示真实时间、当前天气/温度、步数。
 - 🌡️ **AHT20 替换 DHT11**：精度更高，移除 DHT11 驱动与页面。
@@ -65,7 +66,8 @@
 |:--:|:--:|:--:|:--:|
 | <img src="demo/ui/01_home_clock.png" width="240"><br>**首页时钟**<br>时间 · 天气 · 步数 | <img src="demo/ui/02_menu.png" width="240"><br>**滑动菜单**<br>图标横向轮播 | <img src="demo/ui/03_stopwatch.png" width="240"><br>**秒表**<br>开始 / 停止 / 清除 | <img src="demo/ui/04_flashlight.png" width="240"><br>**手电筒**<br>OFF / ON |
 | <img src="demo/ui/05_mpu6050.png" width="240"><br>**MPU6050 姿态**<br>Roll / Pitch / Yaw | <img src="demo/ui/06_gradienter_menu.png" width="240"><br>**水平仪菜单**<br>水平 / 竖直 / 斜坡 | <img src="demo/ui/07_level.png" width="240"><br>**水平仪**<br>气泡居中即水平 | <img src="demo/ui/08_vertical.png" width="240"><br>**竖直仪**<br>气泡居中即竖直 |
-| <img src="demo/ui/09_slope.png" width="240"><br>**斜坡仪**<br>角度 + 坡度百分比 | <img src="demo/ui/10_emoji.png" width="240"><br>**动态表情**<br>眨眼动画 | <img src="demo/ui/11_game_menu.png" width="240"><br>**小游戏**<br>小恐龙 / 像素小鸟 | <img src="demo/ui/12_weather.png" width="240"><br>**天气**<br>三天预报（C3 数据） |
+| <img src="demo/ui/09_slope.png" width="240"><br>**斜坡仪**<br>角度 + 坡度百分比 | <img src="demo/ui/10_emoji.png" width="240"><br>**动态表情**<br>眨眼动画 | <img src="demo/ui/11_game_menu.png" width="240"><br>**小游戏**<br>小恐龙 / 像素小鸟 | <img src="demo/ui/12_weather.png" width="240"><br>**天气·列表**<br>三天预报（C3 数据） |
+| <img src="demo/ui/12b_weather_trend.png" width="240"><br>**温度趋势**<br>多天高/低温曲线（按键翻页） |
 | <img src="demo/ui/13_temp_humi.png" width="240"><br>**温湿度**<br>AHT20 | <img src="demo/ui/14_setting_menu.png" width="240"><br>**设置**<br>进入日期时间设置 | <img src="demo/ui/15_set_date.png" width="240"><br>**设置日期**<br>年 / 月 / 日 | <img src="demo/ui/16_set_time.png" width="240"><br>**设置时间**<br>时 / 分 / 秒 |
 
 > 点开任意图片看大图；完整清单与最新渲染见 [`demo/ui/`](demo/ui/)。
@@ -124,7 +126,8 @@
 | 报文 | 例子 | 含义 |
 |---|---|---|
 | `$OK,<utc秒>,<天气码>,<温度>` | `$OK,1794577140,13,20` | 时间 + 当前天气 |
-| `$FC,<今c>,<今高>,<今低>,<明c>,<明高>,<明低>,<后c>,<后高>,<后低>` | `$FC,9,27,18,0,28,18,13,28,19` | 三天预报 |
+| `$FC,<今c>,<今高>,<今低>,<明c>,<明高>,<明低>,<后c>,<后高>,<后低>` | `$FC,9,27,18,0,28,18,13,28,19` | 三天预报（列表页） |
+| `$FD,<n>,<c0>,<h0>,<l0>,<c1>,<h1>,<l1>,...` | `$FD,3,10,26,19,0,28,19,4,26,21` | n 天预报（温度趋势曲线页，n≤15） |
 | `$ERR,0,0,0` | — | 取数失败 |
 
 - `utc` 为 UTC 秒，STM32 写入 RTC，显示时 **+8 小时**（北京时间）。
@@ -142,8 +145,8 @@
 │  ├─ MPU6050.c/h       六轴姿态
 │  ├─ aht20.c/h         AHT20 温湿度（软件 I²C，PA11/PA12）
 │  ├─ Serial.c/h        USART1/2 驱动（中断接收）
-│  ├─ esp32c3.c/h       ESP32-C3 串口协议解析（$OK/$FC）
-│  ├─ weather.c/h       天气页面（当前温度 + 三天预报）
+│  ├─ esp32c3.c/h       ESP32-C3 串口协议解析（$OK/$FC/$FD）
+│  ├─ weather.c/h       天气页（列表 + 温度趋势曲线，按键翻页）
 │  ├─ pedometer.c/h     计步（MPU6050 加速度峰谷检测）
 │  ├─ menu.c/h          首页时钟 + 滑动菜单
 │  ├─ menu_sub.c/h      秒表 / 手电 / 姿态 / 水平仪 / 表情 / 游戏 / AHT20
