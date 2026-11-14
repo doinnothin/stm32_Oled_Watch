@@ -32,6 +32,12 @@ RTE/_*/
 .vscode/launch.json
 .vscode/settings.json
 
+# ---- 生成的 UI 渲染中间产物 ----
+tools/ui_render/out/
+tools/ui_render/render.exe
+tools/ui_render/png/
+tools/ui_render/00_overview.png
+
 # ---- 系统文件 ----
 Thumbs.db
 desktop.ini

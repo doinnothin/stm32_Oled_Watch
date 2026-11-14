@@ -55,19 +55,20 @@
 <a id="demo"></a>
 ## 📽️ 实机演示
 
-> 演示素材（视频 / GIF / 截图）会放在 [`demo/`](demo/) 目录，后续补充。
+> 🖥️ **下面所有界面，都是把固件里「真实运行的同一份 C 代码」搬到 PC 上逐像素渲染出来的**（读取 128×64 OLED 显存导出，非手绘/PS），
+> 因此与硬件屏幕上的画面几乎一模一样。生成方法与脚本见 [`tools/ui_render/`](tools/ui_render/)。
+> 真实拍摄的视频 / GIF 之后仍可直接放进 [`demo/`](demo/) 补充。
 
-| 演示内容 | 入口 |
-|---|---|
-| 首页时钟（时间 / 天气 / 步数） | `demo/` _待补充_ |
-| 天气页：三天预报 | `demo/` _待补充_ |
-| 滑动菜单 / 各传感器页 / 小游戏 | `demo/` _待补充_ |
+<p align="center"><img src="demo/ui/00_overview.png" alt="STM32 手表全部 UI 总览（固件同源代码渲染）" width="94%"></p>
 
-<!--
-  把 demo.mp4 / demo.gif 或截图放进 demo/ 后，用下面的写法替换上面的占位：
-  ![演示](demo/demo.gif)
-  <video src="demo/demo.mp4" controls width="480"></video>
--->
+| | | | |
+|:--:|:--:|:--:|:--:|
+| <img src="demo/ui/01_home_clock.png" width="240"><br>**首页时钟**<br>时间 · 天气 · 步数 | <img src="demo/ui/02_menu.png" width="240"><br>**滑动菜单**<br>图标横向轮播 | <img src="demo/ui/03_stopwatch.png" width="240"><br>**秒表**<br>开始 / 停止 / 清除 | <img src="demo/ui/04_flashlight.png" width="240"><br>**手电筒**<br>OFF / ON |
+| <img src="demo/ui/05_mpu6050.png" width="240"><br>**MPU6050 姿态**<br>Roll / Pitch / Yaw | <img src="demo/ui/06_gradienter_menu.png" width="240"><br>**水平仪菜单**<br>水平 / 竖直 / 斜坡 | <img src="demo/ui/07_level.png" width="240"><br>**水平仪**<br>气泡居中即水平 | <img src="demo/ui/08_vertical.png" width="240"><br>**竖直仪**<br>气泡居中即竖直 |
+| <img src="demo/ui/09_slope.png" width="240"><br>**斜坡仪**<br>角度 + 坡度百分比 | <img src="demo/ui/10_emoji.png" width="240"><br>**动态表情**<br>眨眼动画 | <img src="demo/ui/11_game_menu.png" width="240"><br>**小游戏**<br>小恐龙 / 像素小鸟 | <img src="demo/ui/12_weather.png" width="240"><br>**天气**<br>三天预报（C3 数据） |
+| <img src="demo/ui/13_temp_humi.png" width="240"><br>**温湿度**<br>AHT20 | <img src="demo/ui/14_setting_menu.png" width="240"><br>**设置**<br>进入日期时间设置 | <img src="demo/ui/15_set_date.png" width="240"><br>**设置日期**<br>年 / 月 / 日 | <img src="demo/ui/16_set_time.png" width="240"><br>**设置时间**<br>时 / 分 / 秒 |
+
+> 点开任意图片看大图；完整清单与最新渲染见 [`demo/ui/`](demo/ui/)。
 
 <a id="arch"></a>
 ## 🏗️ 系统架构
