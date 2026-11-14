@@ -153,6 +153,7 @@ $<类型>,<seq>,<数据...>*<CRC16>\r\n     // CRC16 为 4 位十六进制（大
 
 - **WiFi 直连**：在 `esp32c3_firmware/ESP32C3_WeatherClock/ESP32C3_WeatherClock.ino` 顶部改 `WIFI_SSID / WIFI_PASSWORD`，上电直接连（失败每 5s 自动重连），**不使用 SoftAP 热点配网**。
 - **手机/电脑与 C3 在同一 WiFi**，浏览器打开 `http://<C3的IP>`（串口会打印 `Web / OTA: http://...`）：
+  - **实时状态 `/status`**：页面顶部每 2 秒自动刷新 IP / 信号 RSSI / 运行时间 / 城市 / 天气码+温度 / 距上次成功 / 成功·失败次数；
   - **城市 / 心知 key** 表单 → 保存即生效（存 NVS，断电不丢）；
   - **▲ 上 / ● 确认 / ▼ 下** 虚拟按键 → 通过串口 `$KEY` 帧远程操作手表菜单。
 - **OTA 升级**：ArduinoOTA 主机名 `stm32-watch`，用 Arduino IDE / PlatformIO 的“网络端口”在线烧录 C3。
