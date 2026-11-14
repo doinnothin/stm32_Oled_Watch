@@ -20,6 +20,8 @@ static char    s_fc_text[3][16] = {"", "", ""};
 static uint16_t s_rx_lines = 0;
 static uint16_t s_ok_cnt   = 0;
 static uint16_t s_fc_cnt   = 0;
+static uint16_t s_crc_ok   = 0;
+static uint16_t s_crc_err  = 0;
 
 /* 多天预报（趋势曲线用），最多 15 天（心知付费上限） */
 #define TREND_MAX 15
@@ -73,29 +75,65 @@ void ESP32C3_Init(void)
     Serial_SendString(2, "R\r\n");
 }
 
-void ESP32C3_Poll(void)
+/* CRC-16/CCITT-FALSE：poly=0x1021, init=0xFFFF，不反转、不异或输出（与 ESP32 端一致） */
+static uint16_t crc16_ccitt(const uint8_t *data, uint16_t len)
 {
-    if (!USART2_RX_FINISH) return;
-    USART2_RX_FINISH = 0;
-    s_rx_lines++;
+    uint16_t crc = 0xFFFF;
+    uint16_t i;
+    uint8_t b;
+    for (i = 0; i < len; i++)
+    {
+        crc ^= (uint16_t)data[i] << 8;
+        for (b = 0; b < 8; b++)
+            crc = (crc & 0x8000) ? (uint16_t)((crc << 1) ^ 0x1021) : (uint16_t)(crc << 1);
+    }
+    return crc;
+}
 
-    /* 保证字符串以 '\0' 结尾 */
-    if (USART2_RX_LEN > 1023) USART2_RX_LEN = 1023;
-    USART2_RX_BUF[USART2_RX_LEN] = '\0';
+static uint8_t hexVal(char c)
+{
+    if (c >= '0' && c <= '9') return (uint8_t)(c - '0');
+    if (c >= 'A' && c <= 'F') return (uint8_t)(c - 'A' + 10);
+    if (c >= 'a' && c <= 'f') return (uint8_t)(c - 'a' + 10);
+    return 0xFF;
+}
 
-    char *p = strstr(USART2_RX_BUF, "$OK,");
-    if (p != NULL)
+/* 处理一整行（不含 \r\n）：先校验 CRC，再按 "$XX," 前缀分发 */
+static void ProcessLine(char *line, uint16_t len)
+{
+    char *star;
+    uint16_t crcpos, rx, calc;
+    uint8_t i;
+
+    if (len < 8) return;
+
+    star = (char *)memchr(line, '*', len);
+    if (star == NULL) { s_crc_err++; return; }
+    crcpos = (uint16_t)(star - line);
+    if ((uint32_t)crcpos + 5 > len) { s_crc_err++; return; }   /* '*' + 4 位十六进制 */
+
+    rx = 0;
+    for (i = 0; i < 4; i++)
+    {
+        uint8_t hv = hexVal(line[crcpos + 1 + i]);
+        if (hv == 0xFF) { s_crc_err++; return; }
+        rx = (uint16_t)((rx << 4) | hv);
+    }
+    calc = crc16_ccitt((const uint8_t *)line, crcpos);
+    if (rx != calc) { s_crc_err++; return; }
+    s_crc_ok++;
+
+    line[crcpos] = '\0';                       /* 截掉 "*HHHH"，后面只看内容 */
+
+    if (strncmp(line, "$OK,", 4) == 0)
     {
         unsigned long utc = 0;
         int code = -1, temp = 0;
-        if (sscanf(p + 4, "%lu,%d,%d", &utc, &code, &temp) == 3 && utc > 1600000000UL)
+        if (sscanf(line + 4, "%lu,%d,%d", &utc, &code, &temp) == 3 && utc > 1600000000UL)
         {
             s_ok_cnt++;
-            /* RTC 里存 UTC 秒；MyRTC_ReadTime 显示时会 +8 小时 */
             RTC_SetCounter((uint32_t)utc);
             RTC_WaitForLastTask();
-
-            /* code<0 表示这次没有天气，保留上一次的天气显示，只更新时间 */
             if (code >= 0)
             {
                 s_code = code;
@@ -106,59 +144,78 @@ void ESP32C3_Poll(void)
             }
         }
     }
-
-    /* 三天预报行：$FC,c0,h0,l0,c1,h1,l1,c2,h2,l2 */
+    else if (strncmp(line, "$FC,", 4) == 0)
     {
-        char *q = strstr(USART2_RX_BUF, "$FC,");
-        if (q != NULL)
+        int c0, h0, l0, c1, h1, l1, c2, h2, l2, k;
+        if (sscanf(line + 4, "%d,%d,%d,%d,%d,%d,%d,%d,%d",
+                   &c0, &h0, &l0, &c1, &h1, &l1, &c2, &h2, &l2) == 9)
         {
-            int c0, h0, l0, c1, h1, l1, c2, h2, l2, i;
-            if (sscanf(q + 4, "%d,%d,%d,%d,%d,%d,%d,%d,%d",
-                       &c0, &h0, &l0, &c1, &h1, &l1, &c2, &h2, &l2) == 9)
+            s_fc_cnt++;
+            s_fc_code[0] = c0; s_fc_hi[0] = h0; s_fc_lo[0] = l0;
+            s_fc_code[1] = c1; s_fc_hi[1] = h1; s_fc_lo[1] = l1;
+            s_fc_code[2] = c2; s_fc_hi[2] = h2; s_fc_lo[2] = l2;
+            for (k = 0; k < 3; k++)
             {
-                s_fc_cnt++;
-                s_fc_code[0] = c0; s_fc_hi[0] = h0; s_fc_lo[0] = l0;
-                s_fc_code[1] = c1; s_fc_hi[1] = h1; s_fc_lo[1] = l1;
-                s_fc_code[2] = c2; s_fc_hi[2] = h2; s_fc_lo[2] = l2;
-                for (i = 0; i < 3; i++)
-                {
-                    strncpy(s_fc_text[i], CodeToText(s_fc_code[i]), sizeof(s_fc_text[i]) - 1);
-                    s_fc_text[i][sizeof(s_fc_text[i]) - 1] = '\0';
-                }
-                s_fc_valid = (c0 >= 0 || c1 >= 0 || c2 >= 0) ? 1 : 0;
+                strncpy(s_fc_text[k], CodeToText(s_fc_code[k]), sizeof(s_fc_text[k]) - 1);
+                s_fc_text[k][sizeof(s_fc_text[k]) - 1] = '\0';
             }
-        }
-        else if (p == NULL && strstr(USART2_RX_BUF, "$ERR") != NULL)
-        {
-            s_valid = 0;                /* 这次没取到，保留上一次显示 */
+            s_fc_valid = (c0 >= 0 || c1 >= 0 || c2 >= 0) ? 1 : 0;
         }
     }
-
-    /* 多天预报：$FD,<n>,c0,h0,l0,c1,h1,l1,...（温度趋势页用） */
+    else if (strncmp(line, "$FD,", 4) == 0)
     {
-        char *r = strstr(USART2_RX_BUF, "$FD,");
-        if (r != NULL)
+        char *tok = strtok(line + 4, ",");
+        if (tok != NULL)
         {
-            char *tok = strtok(r + 4, ",");
-            if (tok != NULL)
+            int n = atoi(tok), k = 0;
+            while (k < TREND_MAX)
             {
-                int n = atoi(tok), i = 0;
-                while (i < TREND_MAX)
-                {
-                    char *tc = strtok(NULL, ","); if (tc == NULL) break;
-                    char *th = strtok(NULL, ","); if (th == NULL) break;
-                    char *tl = strtok(NULL, ","); if (tl == NULL) break;
-                    s_tr_code[i] = atoi(tc);
-                    s_tr_hi[i]   = atoi(th);
-                    s_tr_lo[i]   = atoi(tl);
-                    strncpy(s_tr_text[i], CodeToText(s_tr_code[i]), sizeof(s_tr_text[i]) - 1);
-                    s_tr_text[i][sizeof(s_tr_text[i]) - 1] = '\0';
-                    i++;
-                }
-                s_tr_count = (uint8_t)i;    /* 实际解析到的天数 */
-                (void)n;
+                char *tc = strtok(NULL, ","); if (tc == NULL) break;
+                char *th = strtok(NULL, ","); if (th == NULL) break;
+                char *tl = strtok(NULL, ","); if (tl == NULL) break;
+                s_tr_code[k] = atoi(tc);
+                s_tr_hi[k]   = atoi(th);
+                s_tr_lo[k]   = atoi(tl);
+                strncpy(s_tr_text[k], CodeToText(s_tr_code[k]), sizeof(s_tr_text[k]) - 1);
+                s_tr_text[k][sizeof(s_tr_text[k]) - 1] = '\0';
+                k++;
             }
+            s_tr_count = (uint8_t)k;
+            (void)n;
         }
+    }
+    else if (strncmp(line, "$ERR", 4) == 0)
+    {
+        s_valid = 0;                            /* 这次没取到，保留上次显示 */
+    }
+}
+
+void ESP32C3_Poll(void)
+{
+    char *s, *nl;
+
+    if (!USART2_RX_FINISH) return;
+    USART2_RX_FINISH = 0;
+
+    if (USART2_RX_LEN > 1023) USART2_RX_LEN = 1023;
+    USART2_RX_BUF[USART2_RX_LEN] = '\0';
+
+    /* 一帧可能包含多行（$OK\r\n$FC\r\n$FD\r\n）：逐行拆分、逐行校验解析 */
+    s = USART2_RX_BUF;
+    while (*s != '\0')
+    {
+        uint16_t ll;
+        nl = s;
+        while (*nl != '\0' && *nl != '\n') nl++;
+        ll = (uint16_t)(nl - s);
+        while (ll > 0 && s[ll - 1] == '\r') ll--;
+        if (ll > 0)
+        {
+            s_rx_lines++;
+            ProcessLine(s, ll);
+        }
+        if (*nl == '\n') nl++;
+        s = nl;
     }
 
     USART2_RX_LEN = 0;

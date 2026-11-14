@@ -25,6 +25,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <time.h>
+#include <string.h>
 
 /* ============================ 配置区（改成你自己的） ============================ */
 static const char* WIFI_SSID     = "YOUR_WIFI_SSID";      // 你的 WiFi 名称（2.4G）
@@ -217,13 +218,36 @@ static int fetchForecast(int code[], int hi[], int lo[])
   return got;
 }
 
+/* CRC-16/CCITT-FALSE：poly=0x1021, init=0xFFFF, 不反转、不异或输出。
+   两端用同一算法；对 "$" 起到 '*' 之前的整段 ASCII 计算，附在 '*' 后 4 位十六进制。 */
+static uint16_t crc16_ccitt(const uint8_t *data, uint16_t len)
+{
+  uint16_t crc = 0xFFFF;
+  for (uint16_t i = 0; i < len; i++)
+  {
+    crc ^= (uint16_t)data[i] << 8;
+    for (uint8_t b = 0; b < 8; b++)
+      crc = (crc & 0x8000) ? (uint16_t)((crc << 1) ^ 0x1021) : (uint16_t)(crc << 1);
+  }
+  return crc;
+}
+
+/* 统一组帧：body 形如 "$OK,..."（不含 CRC），发送 body*HHHH\r\n */
+static void sendFrame(const char *body)
+{
+  uint16_t c = crc16_ccitt((const uint8_t *)body, (uint16_t)strlen(body));
+  STM32Serial.printf("%s*%04X\r\n", body, c);
+}
+
 /* 把结果发一行给 STM32 */
 static void sendLine(bool ok, uint32_t epoch, int wcode, int temp)
 {
+  char buf[64];
   if (ok)
-    STM32Serial.printf("$OK,%lu,%d,%d\r\n", (unsigned long)epoch, wcode, temp);
+    snprintf(buf, sizeof(buf), "$OK,%lu,%d,%d", (unsigned long)epoch, wcode, temp);
   else
-    STM32Serial.printf("$ERR,0,0,0\r\n");
+    snprintf(buf, sizeof(buf), "$ERR,0,0,0");
+  sendFrame(buf);
 }
 
 /* 一次完整刷新：WiFi → 时间 → 天气 → 发送 */
@@ -268,17 +292,21 @@ static void doUpdate()
     if (fn > 0)
     {
       int i;
+      char buf[320];
       /* 不足 3 天则用最后一天补齐，保证列表页有 3 行 */
       for (i = fn; i < 3; i++) { fcode[i] = fcode[fn - 1]; fhi[i] = fhi[fn - 1]; flo[i] = flo[fn - 1]; }
 
-      STM32Serial.printf("$FC,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
-                         fcode[0], fhi[0], flo[0],
-                         fcode[1], fhi[1], flo[1],
-                         fcode[2], fhi[2], flo[2]);
+      snprintf(buf, sizeof(buf), "$FC,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+               fcode[0], fhi[0], flo[0], fcode[1], fhi[1], flo[1], fcode[2], fhi[2], flo[2]);
+      sendFrame(buf);
 
-      STM32Serial.printf("$FD,%d", fn);
-      for (i = 0; i < fn; i++) STM32Serial.printf(",%d,%d,%d", fcode[i], fhi[i], flo[i]);
-      STM32Serial.print("\r\n");
+      /* $FD,<n>,c0,h0,l0,... 全部天数（趋势曲线页） */
+      {
+        int p = snprintf(buf, sizeof(buf), "$FD,%d", fn);
+        for (i = 0; i < fn && p < (int)sizeof(buf) - 16; i++)
+          p += snprintf(buf + p, sizeof(buf) - p, ",%d,%d,%d", fcode[i], fhi[i], flo[i]);
+        sendFrame(buf);
+      }
 
       Serial.printf("预报 -> n=%d  %d/%d/%d ...\r\n", fn, fhi[0], flo[0], fcode[0]);
     }
