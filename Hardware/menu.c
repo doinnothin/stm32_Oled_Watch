@@ -9,9 +9,12 @@
 #include "delay.h"
 #include <math.h>
 #include "mpu6050.h"    
-#include "dht11.h"
+#include "aht20.h"
+#include "pedometer.h"
 #include "dino.h"
 #include "menu_sub.h"
+#include "esp32c3.h"
+#include "weather.h"
 
 uint8_t KeyNum = 0; // 定义全局变量，存储按键键码值，范围：0~3，0代表没有按键按下
 
@@ -22,16 +25,66 @@ void Peripheral_Init(void)
     Key_Init();
     LED_Init();
     MPU6050_Init();
-    DHT11_Init();
+    AHT20_Init();   /* 温湿度改用 AHT20（PA11/PA12），DHT11 停用 */
+    Pedometer_Init();   /* 计步模块初始化 */
 }
 
 /*----------------------------------首页时钟-------------------------------------*/
+
+/* 由年月日算星期（0=周日），Sakamoto 公式 */
+static const char* Week_ASCII(int y, int m, int d)
+{
+    static const char* names[7] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+    static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+    if (m < 3) y -= 1;
+    int w = (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+    if (w < 0) w += 7;
+    return names[w];
+}
+
 void Show_ui_Clock(void)
 {
+    ESP32C3_Poll();      /* 处理 ESP32-C3 发来的时间/天气（收到就写 RTC） */
+    Pedometer_Update();  /* 每 20ms 采一次 MPU6050 做计步 */
     MyRTC_ReadTime();
 
-    OLED_Printf(0, 0, OLED_6X8, "%02d:%02d:%02d", MyRTC_Time[0], MyRTC_Time[1], MyRTC_Time[2]);
-    OLED_Printf(0, 16, OLED_12X24, "%02d-%02d-%02d", MyRTC_Time[3], MyRTC_Time[4], MyRTC_Time[5]);
+    /* 第 1 行：日期 + 星期（6x8 小字） */
+    OLED_Printf(0, 0, OLED_6X8, "%04d-%02d-%02d %s",
+                MyRTC_Time[0], MyRTC_Time[1], MyRTC_Time[2],
+                Week_ASCII(MyRTC_Time[0], MyRTC_Time[1], MyRTC_Time[2]));
+
+    /* 第 2 行：时间（12x24 大字） */
+    OLED_Printf(10, 8, OLED_12X24, "%02d:%02d:%02d",
+                MyRTC_Time[3], MyRTC_Time[4], MyRTC_Time[5]);
+
+    /* 第 3 行：天气 + 温度 + 步数 */
+    OLED_ClearArea(0, 32, 128, 16);
+    if (ESP32C3_DataValid())
+    {
+        char *wt = ESP32C3_WeatherText();
+        char *pp;
+        int wn = 0, tx;
+        for (pp = wt; *pp != '\0'; pp++)
+        {
+            if ((*pp & 0xC0) != 0x80) wn++;   /* 统计 UTF-8 字符数，中文占 16px */
+        }
+        OLED_ShowString(0, 32, wt, OLED_8X16);
+        tx = wn * 16 + 2;
+        OLED_Printf(tx, 32, OLED_8X16, "%dC", ESP32C3_Temperature());
+    }
+    else
+    {
+        OLED_ShowString(0, 32, "天气 --", OLED_8X16);
+    }
+    /* 右侧：步数（"步" + 4 位数字） */
+    {
+        unsigned int st = (unsigned int)Pedometer_GetSteps();
+        if (st > 9999) st = 9999;
+        OLED_ShowString(80, 32, "步", OLED_8X16);
+        OLED_Printf(96, 32, OLED_8X16, "%4u", st);
+    }
+
+    /* 第 4 行：菜单 / 设置（保持原有导航与反色高亮） */
     OLED_ShowString(0, 48, "菜单", OLED_8X16);
     OLED_ShowString(96, 48, "设置", OLED_8X16);
 }
@@ -244,6 +297,11 @@ int Menu_Page(void)
             OLED_Update();
             menuflag_temp = menu_flag;
         }
+        else if(Key_Check(KEY_3, KEY_LONG)) 
+        {
+            OLED_Clear();
+            return 0;
+        }
         if (menuflag_temp) Key_Reset();   // 进入子页面前清掉按键标志
 
         if (menuflag_temp == 1) return 0;                                              // 返回主界面
@@ -253,8 +311,8 @@ int Menu_Page(void)
         else if (menuflag_temp == 5) { MenuToFunction(); Game(); }                                               // 预留
         else if (menuflag_temp == 6) { MenuToFunction(); Emoji(); }                    // 跳转到动态表情包界面
         else if (menuflag_temp == 7) { MenuToFunction(); Gradienter(); }               // 跳转到水平仪界面
-        else if (menuflag_temp == 8) {  }                   
-        else if (menuflag_temp == 9) { MenuToFunction(); DHT11();}                    
+        else if (menuflag_temp == 8) { MenuToFunction(); Weather(); }                   // 跳转到天气界面（ESP32-C3 数据）
+        else if (menuflag_temp == 9) { MenuToFunction(); AHT20_Page();}              // 温湿度（AHT20）
         if (menuflag_temp) Key_Reset();   // 从子页面返回后清掉按键标志
 
         if (menu_flag == 1)

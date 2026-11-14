@@ -6,17 +6,17 @@
 
 | 文件 | 内容 |
 |---|---|
-| `demo.mp4` | 整体上手演示（首页时钟 → 滑动菜单 → 各功能） |
+| `demo.mp4` | 整体上手演示（首页时钟 → 天气 → 滑动菜单 → 各功能） |
 | `demo.gif` | 一段短循环，放在 README 顶部最好看 |
+| `clock.png` | 首页时钟截图（时间 / 天气 / 步数） |
+| `weather.png` | 天气页三天预报截图 |
 | `menu.png` | 滑动菜单截图 |
-| `clock.png` | 首页时钟截图 |
 | `game.gif` | 小恐龙 / 像素小鸟游戏动图 |
-| `sensor.png` | MPU6050 姿态 / 水平仪 / 温湿度截图 |
 
 放好后，在根目录 `README.md` 的 `📽️ 实机演示` 一节里，把占位表格换成对应的 Markdown 引用即可，例如：
 
 ```markdown
-![滑动菜单](demo/menu.png)
+![天气页](demo/weather.png)
 
 <video src="demo/demo.mp4" controls width="480"></video>
 ```

@@ -5,165 +5,217 @@
 #include "delay.h"
 #include "stdlib.h"
 
-/* 依赖 menu_sub.c 里的姿态解算 */
+/* 依赖 menu_sub.c 的姿态解算 */
 void MPU6050_Calculation(void);
-extern float Pitch;          // 互补滤波后的 pitch 角，用于体感控制上下
+extern float Pitch, Roll;
 
-#define BIRD_X        22      // 小鸟固定横坐标
-#define BIRD_W        16
-#define BIRD_H        14
-#define TER_LEN       256     // 地形循环长度（循环缓冲，避免越界）
-#define SCROLL_SPEED  2       // 每帧地形左移像素
-#define PITCH_K       1.6f    // pitch(度) -> 纵向像素 的比例
-#define WING_PERIOD   6       // 每6帧换一次翅膀
+/*---------------- 图片素材（取自参考工程 1-9 陀螺仪小游戏） ----------------*/
+/* 地面/顶部装饰带：256列 × 8像素，滚动使用 */
+static const uint8_t bgGround[] = {
+    0x0C,0xCC,0x4C,0x4C,0x4C,0x5C,0x4C,0x4C,0x2C,0x0C,0x0C,0x0C,0x0C,0x0E,0x0D,0x0D,
+    0x0D,0x0D,0x0D,0x0D,0x0D,0x4D,0x0C,0x2C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,
+    0x0C,0x2C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x8C,0x8E,0x4E,0x4E,0x6E,
+    0x2E,0x2E,0x2E,0x2E,0x2E,0x0E,0x0F,0x0D,0x0D,0x0D,0x0D,0x0C,0x0C,0x0C,0x2C,0x0C,
+    0x0C,0x0C,0x0C,0x0C,0x2C,0x0C,0x0C,0x0C,0x0C,0x1C,0x3C,0x2C,0x6C,0x4C,0xDC,0x8C,
+    0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x4E,0x0E,0x0F,0x0D,0x0D,0x0D,0x0D,0x0D,0x0E,0x8E,
+    0x0E,0x0E,0x0C,0x4C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x6C,0x2C,0x2C,0x3C,0x1C,0x1C,
+    0x1C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x1C,0x0E,0x0E,0x0E,0x0F,0x0F,
+    0x0F,0x2D,0x0D,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0E,0x0E,0x0C,0x1C,0x3C,0x2C,0x2C,
+    0x2C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x4C,0x0C,0x0C,0x0C,0x0C,
+    0x0C,0x0C,0x0C,0x0E,0x0E,0x0F,0x0F,0x0C,0x0C,0x0C,0x1C,0x2C,0x1C,0x0C,0x0C,0x0C,
+    0x0C,0x0C,0x0C,0x0C,0x4C,0x4C,0x4C,0x6C,0x6E,0x2F,0x2D,0x3C,0x1C,0x1C,0x0C,0x0C,
+    0x0C,0x0C,0x0C,0x4C,0x1C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0E,0x4E,0x0F,0x0D,
+    0x0D,0x0D,0x0C,0x0C,0x0C,0x1C,0x1C,0x1C,0x1C,0x2C,0x2C,0x2C,0x0C,0x0C,0x0C,0x0C,
+    0x0C,0x0C,0x0E,0x0E,0x4F,0x0F,0x0F,0x0F,0x0F,0x0D,0x0D,0x0D,0x0D,0x0C,0x0C,0x0C,
+    0x0C,0x1C,0x1C,0x1C,0x1C,0x1C,0x1C,0x1E,0x1E,0x1E,0x0F,0x0D,0x0D,0x0D,0x0D,0x0D
+};
 
-/* 小鸟像素图两帧（16x14，2页×16列 = 32字节）：0=翅膀朝上 1=翅膀朝下 */
-static const uint8_t Bird_img[2][32] = {
+/* 障碍（仙人掌/石头）18x18，[0]=上方 [1]=下方 */
+static const uint8_t bgBarrier1[2][54] = {
     {
-        0x18,0x3C,0x7E,0xFE,0xFE,0xFE,0xFC,0xF8,0xF8,0x38,0x38,0xF0,0xE0,0xC0,0x80,0x00,
-        0x00,0x00,0x00,0x07,0x0F,0x1F,0x3F,0x3F,0x3F,0x3F,0x3F,0x1F,0x0F,0x07,0x03,0x01
+        0x06,0x06,0x06,0x7C,0xC0,0x00,0x78,0x00,0x00,0xC0,0x00,0x00,0x00,0xE0,0x38,0x06,
+        0x06,0x06,0x00,0x00,0x00,0x00,0x01,0x0F,0x38,0xC0,0x00,0x83,0x66,0x38,0x0F,0x01,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0x03,0x01,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00
     },
     {
-        0x00,0x00,0x00,0xC0,0xE0,0xF0,0xF8,0xF8,0xF8,0x38,0x38,0xF0,0xE0,0xC0,0x80,0x00,
-        0x18,0x3C,0x3E,0x3F,0x3F,0x3F,0x3F,0x3F,0x3F,0x3F,0x3F,0x1F,0x0F,0x07,0x03,0x01
+        0x00,0x00,0x00,0x00,0x00,0x00,0xE0,0x38,0xC6,0x43,0x0E,0x70,0x80,0x00,0x00,0x00,
+        0x00,0x00,0x80,0x80,0xC0,0x70,0x18,0x06,0x03,0x04,0x83,0xC0,0x20,0x00,0x0F,0x38,
+        0xC0,0x80,0x80,0x80,0x01,0x01,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x01,0x01,0x01,0x01
     }
 };
 
-/* 洞窟地形：每列记录“上壁高度”和“下壁起始 y”，随机游走生成，滚动循环 */
-static uint8_t  ter_top[TER_LEN];
-static uint8_t  ter_bot[TER_LEN];
-static uint16_t ter_base;
-static uint16_t Bird_Score;
-static uint16_t score_acc;
-
-/* 重新开始一局：生成一段随机洞窟（上下壁平滑起伏，通道至少 26px） */
-void BirdGame_Reset(void)
-{
-    int i, top, bot, vt, vb;
-    static uint16_t seed = 0;
-    seed += 1234;
-    srand(seed);
-
-    top = 12; bot = 44; vt = 0; vb = 0;
-    for (i = 0; i < TER_LEN; i ++)
+/* 小鸟 16x18 两帧（扇翅膀） */
+static const uint8_t bgBird[2][48] = {
     {
-        /* 用“速度”做随机游走，边界才会平滑起伏，不会一格一格的锯齿 */
-        vt += (int)(rand() % 3) - 1; if (vt > 1) vt = 1; else if (vt < -1) vt = -1;
-        vb += (int)(rand() % 3) - 1; if (vb > 1) vb = 1; else if (vb < -1) vb = -1;
-        top += vt;
-        bot += vb;
+        0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x70,0xF8,0xF8,0xE8,0x70,0x60,0x20,
+        0x03,0x02,0x0E,0x9E,0xFF,0xFF,0xFF,0x7F,0x3F,0x1F,0x0F,0x07,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x01,0x01,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+    },
+    {
+        0x80,0x1C,0x7C,0xFC,0xF8,0xF8,0xF0,0xE0,0x80,0x70,0xF8,0xF8,0xE8,0x70,0x60,0x20,
+        0x03,0x02,0x0E,0x1E,0x1F,0x3F,0xFF,0xBF,0x3F,0x1F,0x0F,0x07,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+    }
+};
 
-        if (top < 4)  { top = 4;  vt = 0; }
-        if (top > 22) { top = 22; vt = 0; }
-        if (bot > 60) { bot = 60; vb = 0; }
-        if (bot < 44) { bot = 44; vb = 0; }
-        if (bot - top < 26)                         // 保证通道宽度
+typedef struct { uint8_t maxX, maxY, minX, minY; } Bird_Box;
+
+static int score1;
+static uint16_t Ground_pos1;
+static uint8_t barrier_pos1[2];
+static uint8_t barrier_pos2[2];
+static Bird_Box up[2], down[2];
+static Bird_Box bird;
+
+/* 右上角分数 */
+static void Bird_ShowScore(void)
+{
+    OLED_ShowNum(98, 28, score1, 5, OLED_6X8);
+}
+
+/* 顶部/底部滚动装饰带 */
+static void Bird_ShowGround(void)
+{
+    uint8_t i;
+    if (Ground_pos1 < 128)
+    {
+        for (i = 0; i < 128; i ++)
         {
-            bot = top + 26;
-            if (bot > 62) { bot = 62; top = 62 - 26; }
+            OLED_DisplayBuf[7][i] = bgGround[i + Ground_pos1];
+            OLED_DisplayBuf[0][i] = bgGround[i + Ground_pos1];
         }
-        ter_top[i] = top;
-        ter_bot[i] = bot;
     }
-
-    ter_base    = 0;
-    Bird_Score  = 0;
-    score_acc   = 0;
-}
-
-/* 直接往显存里画洞窟（上下白墙、中间黑通道），比逐个矩形快 */
-static void Cave_Draw(void)
-{
-    uint8_t x;
-    uint16_t idx;
-    uint8_t t, b;
-    int y;
-
-    for (x = 0; x < 128; x ++)
+    else
     {
-        idx = ter_base + x;
-        if (idx >= TER_LEN) idx -= TER_LEN;
-        t = ter_top[idx];
-        b = ter_bot[idx];
-        for (y = 0; y < t; y ++)  OLED_DisplayBuf[y >> 3][x] |= (uint8_t)(1 << (y & 7));
-        for (y = b; y < 64; y ++) OLED_DisplayBuf[y >> 3][x] |= (uint8_t)(1 << (y & 7));
+        for (i = 0; i < 255 - Ground_pos1; i ++)
+        {
+            OLED_DisplayBuf[7][i] = bgGround[i + Ground_pos1];
+            OLED_DisplayBuf[0][i] = bgGround[i + Ground_pos1];
+        }
+        for (i = 255 - Ground_pos1; i < 128; i ++)
+        {
+            OLED_DisplayBuf[7][i] = bgGround[i - (255 - Ground_pos1)];
+            OLED_DisplayBuf[0][i] = bgGround[i - (255 - Ground_pos1)];
+        }
     }
 }
 
-/* 碰撞：小鸟碰到上壁/下壁返回 1 */
-static uint8_t Cave_Collide(int16_t by)
+/* 障碍：2个下方 + 2个上方，并更新碰撞盒 */
+static void Bird_ShowBarrier(void)
 {
-    int16_t bx0 = BIRD_X + 3, bx1 = BIRD_X + 13;
-    int16_t by0 = by + 3,      by1 = by + 11;
-    int16_t x;
-    uint16_t idx;
-
-    if (by0 < 0 || by1 > 63) return 1;
-
-    for (x = bx0; x <= bx1; x ++)
+    uint8_t i;
+    for (i = 0; i < 2; i ++)
     {
-        idx = ter_base + x;
-        if (idx >= TER_LEN) idx -= TER_LEN;
-        if (by0 < ter_top[idx]) return 1;      // 撞上壁
-        if (by1 > ter_bot[idx]) return 1;      // 撞下壁
+        OLED_ShowImage(127 - barrier_pos1[i], 42, 18, 18, bgBarrier1[1]); // 下方
+        down[i].maxX = 127 - barrier_pos1[i] + 22;
+        down[i].minX = 127 - barrier_pos1[i] + 2;
+        down[i].maxY = 42 + 20;
+        down[i].minY = 44;
+    }
+    for (i = 0; i < 2; i ++)
+    {
+        OLED_ShowImage(127 - barrier_pos2[i], 2, 18, 18, bgBarrier1[0]);  // 上方
+        up[i].maxX = 127 - barrier_pos2[i] + 22;
+        up[i].minX = 127 - barrier_pos2[i] + 2;
+        up[i].maxY = 2 + 16;
+        up[i].minY = 0;
+    }
+}
+
+/* 小鸟：Roll 控制左右，Pitch 控制上下，score 奇偶切换翅膀 */
+static void Bird_ShowBird(void)
+{
+    uint8_t Y;
+    MPU6050_Calculation();
+    Y = (uint8_t)(24 + Pitch);
+    if (24 + Pitch >= 38) Y = 38;
+    if (24 + Pitch <= 4)  Y = 4;
+
+    OLED_ShowImage(8 - Roll, Y, 16, 18, bgBird[score1 % 2]);
+    bird.maxX = 8 - Roll + 16;
+    bird.minX = 8 - Roll + 0;
+    bird.maxY = Y + 18;
+    bird.minY = Y + 0;
+}
+
+static uint8_t Bird_Overlap(Bird_Box *a, Bird_Box *b)
+{
+    if ((a->maxX > b->minX) && (a->minX < b->maxX) &&
+        (a->maxY > b->minY) && (a->minY < b->maxY)) return 1;
+    return 0;
+}
+
+static uint8_t Bird_IsColliding(void)
+{
+    uint8_t i;
+    for (i = 0; i < 2; i ++)
+    {
+        if (Bird_Overlap(&bird, &down[i]) || Bird_Overlap(&bird, &up[i])) return 1;
     }
     return 0;
 }
 
-/* 小鸟游戏主循环：K3 按键返回 */
+/* 进入小游戏主循环：K3 返回游戏菜单 */
 int BirdGame_Animation(void)
 {
-    int16_t by = 27;       // 小鸟左上角纵坐标（机身中心约在通道中间）
-    uint8_t wing = 0, wing_cnt = 0;
-    float p;
-    static float pf = 0;
+    uint8_t k;
 
-    Key_Reset();
-    BirdGame_Reset();
+    barrier_pos1[0] = 0;   barrier_pos1[1] = 100;
+    barrier_pos2[0] = 50;  barrier_pos2[1] = 150;
+    Bird_ShowBarrier();                 // 先建立一次碰撞盒
 
     while (1)
     {
-        if (Key_Check(KEY_3, KEY_SINGLE))                 // 返回游戏菜单
+        OLED_Clear();
+        Bird_ShowScore();
+        Bird_ShowGround();
+        Bird_ShowBird();
+        Bird_ShowBarrier();
+
+        if (Bird_IsColliding())
         {
             OLED_Clear();
+            OLED_ShowString(28, 24, "Game Over", OLED_8X16);
             OLED_Update();
-            Key_Reset();
-            return 0;
+            Delay_s(2);
+            score1 = 0;
+            barrier_pos1[0] = 0;   barrier_pos1[1] = 100;
+            barrier_pos2[0] = 50;  barrier_pos2[1] = 150;
         }
 
-        MPU6050_Calculation();
-        p = Pitch;
-        if (p > 45) p = 45; else if (p < -45) p = -45;
-        pf = 0.75f * pf + 0.25f * p;
-        by = 27 - (int16_t)(pf * PITCH_K);                // 体感：pitch 越大越往上
-        if (by < 0) by = 0; else if (by > 50) by = 50;
-
-        /* 地形滚动 + 计分（按飞行距离） */
-        ter_base += SCROLL_SPEED;
-        if (ter_base >= TER_LEN) ter_base -= TER_LEN;
-        score_acc += SCROLL_SPEED;
-        if (score_acc >= 16) { score_acc = 0; Bird_Score ++; }
-
-        if (++wing_cnt >= WING_PERIOD) { wing_cnt = 0; wing ^= 1; }
-
-        OLED_Clear();
-        Cave_Draw();
-        OLED_ShowImage(BIRD_X, by, BIRD_W, BIRD_H, Bird_img[wing]);
-        OLED_ClearArea(92, 0, 36, 9);
-        OLED_ShowNum(94, 0, Bird_Score, 5, OLED_6X8);
         OLED_Update();
 
-        if (Cave_Collide(by))
+        k = Key_GetNum();
+        if (k == 3) { OLED_Clear(); OLED_Update(); score1 = 0; return 0; }
+    }
+}
+
+/* 1ms 定时中断里调用：滚动 + 计分 */
+void Bird_Tick(void)
+{
+    static uint8_t score1_count, ground1_count;
+    uint8_t i;
+
+    score1_count ++;
+    ground1_count ++;
+    if (score1_count >= 100) { score1_count = 0; score1 ++; }
+
+    if (ground1_count >= 20)
+    {
+        ground1_count = 0;
+        Ground_pos1 ++;
+        for (i = 0; i < 2; i ++)
         {
-            OLED_Clear();
-            OLED_ShowString(20, 20, "Game Over", OLED_8X16);
-            OLED_ShowNum(94, 44, Bird_Score, 5, OLED_6X8);
-            OLED_Update();
-            Delay_ms(800);
-            OLED_Clear();
-            OLED_Update();
-            Key_Reset();
-            return 0;
+            barrier_pos1[i] ++;
+            if (barrier_pos1[i] >= 256) barrier_pos1[i] = 0;
+        }
+        for (i = 0; i < 2; i ++)
+        {
+            barrier_pos2[i] ++;
+            if (barrier_pos2[i] >= 256) barrier_pos2[i] = 0;
         }
     }
+    if (Ground_pos1 >= 256) Ground_pos1 = 0;
 }

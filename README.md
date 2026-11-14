@@ -1,42 +1,56 @@
 <div align="center">
 
-# ⌚ STM32 可编程多功能手表 · v1.0
+# ⌚ STM32 可编程多功能手表 · v2.0
 
-**一块自己画板、自己写固件、自己戴着走的小手表。** 🛠️
+**在 v1 的基础上加了一颗 ESP32-C3：现在它能看到真实的时间和天气。** 🌤️
 
 [![MCU](https://img.shields.io/badge/MCU-STM32F103C8T6-03234B)](https://www.st.com/)
+![WiFi](https://img.shields.io/badge/WiFi-ESP32--C3%20SuperMini-E7352C)
 ![Language](https://img.shields.io/badge/Language-C-283593)
-![IDE](https://img.shields.io/badge/IDE-Keil%20MDK%20uVision-00b4d8)
-![Version](https://img.shields.io/badge/Version-v1.0-orange)
+![Build](https://img.shields.io/badge/Build-EIDE%20%2F%20Keil%20MDK-00b4d8)
+![Version](https://img.shields.io/badge/Version-v2.0-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-📽️ [实机演示](#demo) · 🔧 [硬件平台](#hardware) · 🚀 [快速开始](#quickstart) · 🎮 [操作说明](#control)
+📽️ [实机演示](#demo) · 🆕 [v2 更新](#changelog) · 🔧 [硬件接线](#hardware) · 🔌 [串口协议](#protocol) · 🚀 [编译烧录](#quickstart)
 
 </div>
 
 ## 🧭 项目简介
 
-这是一块基于 **STM32F103C8T6** 的可编程多功能手表。它不只是一块电子表：RTC 走时、滑动菜单、传感器、小游戏，全都塞进一块小小的 128×64 OLED 里。整套固件跑在**裸机 + 标准外设库（SPL）**上，外设驱动、页面逻辑、动画都是自己一行行敲出来的。
+这是一块基于 **STM32F103C8T6** 的可编程多功能手表。v1 里它已经能走时、滑动菜单、量姿态、玩游戏；到了 **v2**，我们给它配了一颗 **ESP32-C3 SuperMini**：由 C3 负责连 WiFi、取网络时间、拉真实天气，再通过串口把数据喂给 STM32 显示。
 
-v1.0 是第一个**完整可用**的版本——从首页时钟一路滑到小游戏，功能一个不缺。拿它当智能穿戴、掌上开发板，或者干脆当个 DIY 玩具，都行。😄
+于是手表首页有了**真实时间 + 当前天气 + 步数**，还多了一个能看到**今日 / 明日 / 后日 三天预报**的天气页。STM32 侧依然跑在**裸机 + 标准外设库（SPL）**上，C3 侧是 Arduino 固件，两边通过一条 UART 通信，分工清清楚楚。
 
-> 📌 本仓库只放 **v1 固件工程**；配套的原理图 / PCB、外壳 3D 模型与教程资料不在这里。
+> 📌 仓库历史里的 **v1 工程**仍保留在 git 提交记录中；当前 `main` 分支为 **v2**。
+> 🎬 演示素材会放在 [`demo/`](demo/) 目录，后续补充。
 
 <a id="features"></a>
 ## ✨ 功能一览
 
 | | 功能 | 说明 |
 |---|---|---|
-| 🕐 | **首页电子时钟** | 大字号时间 + 日期，RTC 独立走时，掉电不丢 |
-| 🗓️ | **日期时间设置** | 手动校准年 / 月 / 日 / 时 / 分 / 秒 |
-| 🎞️ | **滑动式功能菜单** | 32×32 图标横向滑动，跟着手指一格格丝滑切换 |
-| ⏱️ | **秒表** | 开始 / 停止 / 清除，毫秒级计时 |
-| 🔦 | **手电筒** | 一键点亮板载 LED 补光 |
-| 📐 | **MPU6050 姿态** | 实时解算 Roll / Pitch / Yaw 欧拉角 |
-| 🧭 | **水平仪** | 水平 / 竖直 / 斜坡三种模式，带角度与百分比 |
-| 😀 | **动态表情包** | 表情动画循环播放，给手表一点"性格" |
-| 🦖 | **小游戏** | 谷歌小恐龙 + 像素小鸟，按键操作躲障碍 |
-| 🌡️ | **温湿度** | DHT11 实时读取温度与湿度 |
+| 🕐 | **首页时钟** | 日期 + 星期 + 大字时间，实时显示天气 / 温度 / 步数 |
+| 🌤️ | **真实天气** | 心知天气实况 + **三天预报**（高/低温 + 天气），由 ESP32-C3 联网获取 |
+| 📶 | **网络校时** | ESP32-C3 走 NTP，每隔约 10 分钟自动校准 RTC |
+| 🚶 | **计步** | MPU6050 加速度模值峰谷检测，步数显示在首页 |
+| 🎞️ | **滑动菜单** | 32×32 图标横向滑动切换 |
+| ⏱️ | **秒表** | 开始 / 停止 / 清除，毫秒级 |
+| 🔦 | **手电筒** | 一键点亮板载 LED |
+| 📐 | **MPU6050 姿态** | 实时 Roll / Pitch / Yaw 欧拉角 |
+| 🧭 | **水平仪** | 水平 / 竖直 / 斜坡三种模式 |
+| 😀 | **动态表情** | 表情动画循环播放 |
+| 🦖 | **小游戏** | 谷歌小恐龙 + 像素小鸟 |
+| 🌡️ | **温湿度** | AHT20（I²C，±0.3℃ / ±2%RH，v2 起替换 DHT11） |
+
+<a id="changelog"></a>
+## 🆕 v2 更新记录
+
+- 🔗 **新增 ESP32-C3 联网**：WiFi + NTP 校时 + 心知天气（实况 + 三天预报），通过 UART 文本协议 `$OK / $FC` 发给 STM32。
+- 🧱 **新增分层驱动**：`Serial.c/h`、`esp32c3.c/h`、`weather.c/h`。
+- 🏠 **首页升级**：显示真实时间、当前天气/温度、步数。
+- 🌡️ **AHT20 替换 DHT11**：精度更高，移除 DHT11 驱动与页面。
+- 🚶 **新增计步**：`pedometer.c/h`，MPU6050 加速度峰谷检测。
+- 🔤 **字库补充**：天气/预报所需汉字（晴/雨/雷/霾/今/明/后/步…）。
 
 <a id="demo"></a>
 ## 📽️ 实机演示
@@ -45,94 +59,141 @@ v1.0 是第一个**完整可用**的版本——从首页时钟一路滑到小�
 
 | 演示内容 | 入口 |
 |---|---|
-| 首页时钟 & 滑动菜单 | `demo/` _待补充_ |
-| 秒表 / 手电筒 / 姿态 / 水平仪 | `demo/` _待补充_ |
-| 小游戏 & 动态表情 | `demo/` _待补充_ |
+| 首页时钟（时间 / 天气 / 步数） | `demo/` _待补充_ |
+| 天气页：三天预报 | `demo/` _待补充_ |
+| 滑动菜单 / 各传感器页 / 小游戏 | `demo/` _待补充_ |
 
 <!--
-  把 demo.mp4 / demo.gif 或截图放进 demo/ 文件夹后，
-  用下面这种写法替换上面的占位表格即可：
+  把 demo.mp4 / demo.gif 或截图放进 demo/ 后，用下面的写法替换上面的占位：
   ![演示](demo/demo.gif)
   <video src="demo/demo.mp4" controls width="480"></video>
 -->
 
+<a id="arch"></a>
+## 🏗️ 系统架构
+
+```text
+        ┌───────────────────────┐        WiFi         ┌────────────────┐
+        │  ESP32-C3 SuperMini   │──────────────────▶  │ 路由器 / 互联网 │
+        │  Arduino 固件         │  NTP / 心知天气      └────────────────┘
+        └──────────┬────────────┘
+                   │ UART 115200（GPIO4→PA3，GND 共地）
+                   ▼
+        ┌───────────────────────┐
+        │  STM32F103C8T6 手表   │  OLED 显示 / RTC 走时 / 按键 / 传感器
+        └───────────────────────┘
+```
+
+- **ESP32-C3**：连 WiFi → NTP 取时 → 请求心知天气（实况 `now.json` + 三天 `daily.json`）→ 解析 JSON → 串口输出几行文本。
+- **STM32**：串口接收解析 → 写 RTC → OLED 显示 → 按键与各传感器页面。
+
 <a id="hardware"></a>
-## 🔧 硬件平台
+## 🔧 硬件与接线
 
-| 项目 | 规格 |
+### STM32F103C8T6 引脚
+
+| 外设 | 引脚 |
 |---|---|
-| 主控 | **STM32F103C8T6**（Cortex-M3，72 MHz，64 KB Flash / 20 KB SRAM） |
-| 显示 | 128×64 OLED（SSD1306，软件 I²C，`PB8`=SCL / `PB9`=SDA，地址 `0x78`） |
-| 姿态传感器 | MPU6050 六轴（软件 I²C，`PB10`=SCL / `PB11`=SDA） |
-| 温湿度 | DHT11 单总线（`PB14`） |
-| 按键 | 3 个独立按键（`PB12` / `PB13` / `PB15`） |
+| OLED（软件 I²C，SSD1306） | SCL=`PB8`，SDA=`PB9` |
+| MPU6050（软件 I²C） | SCL=`PB10`，SDA=`PB11` |
+| 按键 ×3 | `PB12` / `PB13` / `PB15` |
 | 照明 LED | `PA0` |
-| 走时 | 片内 RTC（外部 32.768 kHz 晶振） |
-| 供电 / 充电 | 锂电池 + TP4056 充电管理 + ME6211C33 线性稳压（板级） |
-| 下载调试 | SWD 接口（ST-Link） |
+| AHT20（软件 I²C） | SCL=`PA11`，SDA=`PA12` |
+| **ESP32-C3 串口 USART2** | **`PA2`=TX，`PA3`=RX** |
 
-> 💡 换引脚 / 换外设时，只需改对应驱动头文件里的宏定义，主逻辑不用动。
+### ESP32-C3 ↔ STM32 接线
+
+| ESP32-C3 | 方向 | STM32 | 说明 |
+|---|---|---|---|
+| **GPIO4 (TX)** | → | **PA3 (USART2_RX)** | C3 把时间/天气发给 STM32（**必接**） |
+| GPIO? (RX) | ← | PA2 (USART2_TX) | 可选：STM32 发 `R` 让 C3 立即刷新 |
+| GND | — | GND | **必须共地** |
+| 电源 | — | — | 建议给 C3 独立 3.3V/USB 供电（C3 峰值电流大） |
+
+> 🔎 C3 的 RX 引脚以 `esp32c3_firmware/ESP32C3_WeatherClock.ino` 里的 `STM32_RX_PIN` 定义为准（教程图中为 GPIO5）。最少只需接 **GPIO4→PA3、GND、电源** 三根即可显示。
+> ⚡ 注意：手表上的 ME6211C33 带不动 C3 的 WiFi 峰值电流，**不要用表内稳压给 C3 供电**，否则会死机/复位。
+
+![接线图](docs/接线图_ESP32C3_STM32.png)
+
+<a id="protocol"></a>
+## 🔌 串口协议
+
+一行一帧，`\r\n` 结尾，波特率 **115200**：
+
+| 报文 | 例子 | 含义 |
+|---|---|---|
+| `$OK,<utc秒>,<天气码>,<温度>` | `$OK,1794577140,13,20` | 时间 + 当前天气 |
+| `$FC,<今c>,<今高>,<今低>,<明c>,<明高>,<明低>,<后c>,<后高>,<后低>` | `$FC,9,27,18,0,28,18,13,28,19` | 三天预报 |
+| `$ERR,0,0,0` | — | 取数失败 |
+
+- `utc` 为 UTC 秒，STM32 写入 RTC，显示时 **+8 小时**（北京时间）。
+- 天气用**数字代码**（心知天气 code）传输，STM32 查表转中文，避免串口传中文的编码问题。
+- STM32 上电发送 `'R'` 可请求 C3 立即刷新（需接 PA2→C3 RX）。
 
 <a id="structure"></a>
 ## 📁 目录结构
 
 ```text
-├── User/                # 入口与中断：main.c、外设初始化、1 ms 定时器节拍
-├── Hardware/            # 外设驱动 + 页面逻辑（OLED、按键、菜单、秒表、游戏…）
-│   ├── OLED.c/.h        #   SSD1306 显示驱动（含字库/图形绘制 API）
-│   ├── OLED_Data.c/.h   #   汉字字库、图标与图片素材
-│   ├── menu.c/.h        #   首页时钟、设置页、滑动菜单调度
-│   ├── menu_sub.c/.h    #   秒表、手电筒、姿态、水平仪、表情、游戏、温湿度
-│   ├── Key.c/.h         #   三键非阻塞扫描（单击/双击/长按/连发）
-│   ├── SetTime.c/.h     #   日期时间设置
-│   ├── MPU6050.c/.h     #   六轴姿态解算 + 软件 I²C（MyI2C）
-│   ├── dino.c / bird.c  #   谷歌小恐龙 / 像素小鸟
-│   └── dht11.c / aht20.c#   温湿度传感器驱动
-├── System/              # Delay、RTC、Timer 时基
-├── Library/             # STM32F10x 标准外设库（SPL）
-├── Start/               # 启动文件、CMSIS 内核、system_stm32f10x
-├── demo/                # 实机演示素材（视频 / GIF / 截图）—— 待补充
-├── Project.uvprojx      # Keil MDK 工程文件（双击打开即可）
-└── README.md
+.
+├─ Hardware/            STM32 外设驱动与页面
+│  ├─ OLED.c/h          SSD1306 显示驱动（含字库 OLED_Data.c）
+│  ├─ MyI2C.c/h         软件 I²C（MPU6050 用）
+│  ├─ MPU6050.c/h       六轴姿态
+│  ├─ aht20.c/h         AHT20 温湿度（软件 I²C，PA11/PA12）
+│  ├─ Serial.c/h        USART1/2 驱动（中断接收）
+│  ├─ esp32c3.c/h       ESP32-C3 串口协议解析（$OK/$FC）
+│  ├─ weather.c/h       天气页面（当前温度 + 三天预报）
+│  ├─ pedometer.c/h     计步（MPU6050 加速度峰谷检测）
+│  ├─ menu.c/h          首页时钟 + 滑动菜单
+│  ├─ menu_sub.c/h      秒表 / 手电 / 姿态 / 水平仪 / 表情 / 游戏 / AHT20
+│  └─ dino.c / bird.c   两款小游戏
+├─ System/              Delay / MyRTC / Timer
+├─ User/                main.c、中断与外设初始化
+├─ Start/ Library/      CMSIS 启动文件 + 标准外设库（SPL）
+├─ .eide/               EIDE 工程配置（推荐构建方式）
+├─ esp32c3_firmware/    ESP32-C3 Arduino 固件（ESP32C3_WeatherClock.ino）
+├─ docs/                接线图 + 从 0 复刻教程
+└─ demo/                实机演示素材（视频 / GIF / 截图）—— 待补充
 ```
 
 <a id="quickstart"></a>
-## 🚀 快速开始
+## 🚀 编译与烧录
 
-**环境**：Keil MDK 5 + `Keil.STM32F1xx_DFP` 设备包（在 Keil Pack Installer 里装一次即可）。
+### STM32（推荐 VS Code + EIDE）
 
-1. 打开 `Project.uvprojx`；
-2. `F7` 编译，`F8` 通过 ST-Link（SWD）下载到板子；
-3. 上电，看首页时钟亮起来就成功了。🎉
+1. 安装 VS Code + **EIDE** 插件、ARM 编译器（AC5 或 AC6）。
+2. 打开仓库根目录，EIDE 会自动读取 `.eide/eide.yml`。
+3. 若提示缺芯片包，安装 **Keil.STM32F1xx_DFP 2.4.0**。
+4. Build → 用 **ST-Link**（SWD）烧录。
 
-> 🧩 用 VS Code 的话，直接打开 `Project.code-workspace` 浏览/编辑源码即可；编译下载仍走 Keil（本仓库不附带约 87 MB 的设备 pack，保持轻盈）。
+> 也可以用 Keil 新建工程，把 `Start / Library / System / Hardware / User` 里的源文件加入即可（本仓库不附带 v2 的 `.uvprojx`）。
 
-<a id="control"></a>
-## 🎮 操作说明
+### ESP32-C3（Arduino IDE）
 
-三个按键分工很简单：
+1. 开发板管理器安装 **esp32** 包，建议核心版本 **2.0.17**（新版在 C3 上有连接兼容问题）。
+2. 开发板选 **ESP32C3 Dev Module**，`USB CDC On Boot = Enabled`。
+3. 打开 `esp32c3_firmware/ESP32C3_WeatherClock.ino`，修改顶部配置：
+   ```cpp
+   WIFI_SSID / WIFI_PASSWORD   // 你的 2.4G WiFi
+   CITY                        // 城市拼音，如 guangzhou
+   SENIVERSE_KEY               // 心知天气私钥（自己免费申请）
+   ```
+4. 上传，串口监视器 115200，应看到 `发送 -> utc=... code=... temp=...` 与 `预报 -> ...`。
 
-| 按键 | 引脚 | 作用 |
-|---|---|---|
-| **K1** | `PB12` | 上一条 / 左移（滑动菜单里翻上一项） |
-| **K2** | `PB13` | 下一条 / 右移（滑动菜单里翻下一项） |
-| **K3** | `PB15` | 确认 / 进入当前功能；子页面里通常用于操作 |
+<a id="faq"></a>
+## ❓ 常见问题
 
-> 首页按 **K3** 进入滑动菜单；子页面按 **K1** 返回。长按 K1 / K2 可以连续翻页。
-
-<a id="notes"></a>
-## ⚠️ 说明与已知限制
-
-- 源码里的中文注释为 **GBK 编码**（Keil 习惯）。在 GitHub 网页上个别注释可能显示为乱码，属正常现象，**不影响编译**。
-- DHT11 两次读取间隔需 **≥ 1 秒**，否则会读到旧数据。
-- 本工程基于标准外设库（SPL），非 HAL / CubeMX。
-- 这是个人 DIY 项目，欢迎提 Issue 交流，但不保证对任意硬件改动即插即用。
+- **C3 连不上 WiFi / `reason=2 AUTH_EXPIRE`**：把 esp32 核心降到 **2.0.17**，保持 `WiFi.setTxPower(WIFI_POWER_8_5dBm)`；热点用 **WPA2-PSK / 2.4GHz**，别用 WPA3。
+- **STM32 显示 No data（C3 已发出）**：C3 先上电、STM32 后上电会错过首帧。接上 `PA2→C3 RX` 让 STM32 上电自动请求刷新，或按一下 C3 复位。固件已内置开机 3 分钟内每 20 秒重发。
+- **OLED 某个汉字显示 "?"**：该字不在字库 `OLED_Data.c` 的 `OLED_CF16x16` 中，需补字模。
+- **AHT20 报 `Code:-1`**：寻址失败，检查 SCL/SDA 是否接反、VCC 是否 3.3V、上拉是否正常。
 
 <a id="author"></a>
-## 👤 作者与许可
+## 👤 致谢与许可
 
-- 作者 / 维护：[@doinnothin](https://github.com/doinnothin)
-- 仓库：[doinnothin/stm32_Oled_Watch](https://github.com/doinnothin/stm32_Oled_Watch)
-- 许可证：**MIT**（详见 [LICENSE](LICENSE)）
+- OLED 驱动与字库格式来自 **江协科技** 教程（jiangxiekeji.com）。
+- 天气数据来自 **心知天气 Seniverse**。
+- 本项目在 v1 工程基础上二次开发，许可证 **MIT**（详见 [LICENSE](LICENSE)）。
+- 作者 / 维护：[@doinnothin](https://github.com/doinnothin) · 仓库：[stm32_Oled_Watch](https://github.com/doinnothin/stm32_Oled_Watch)
 
-<div align="center"><sub>⌚ 把想法焊进一块表里 —— 玩得开心。</sub></div>
+<div align="center"><sub>⌚ + 📶 = 一块会看天气的表。玩得开心。</sub></div>

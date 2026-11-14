@@ -10,9 +10,10 @@
 #include "delay.h"
 #include <math.h>
 #include "mpu6050.h"
-#include "dht11.h"
+#include "aht20.h"
 #include "dino.h"
 #include "bird.h"
+#include "esp32c3.h"
 
 extern uint8_t KeyNum; // 声明外部全局变量（真正定义在 menu.c），此处不能再赋值，否则会重复定义
 
@@ -525,45 +526,47 @@ int Emoji(void)
 }
 
 
-/*----------------------------------温度计-------------------------------------*/
+/*----------------------------------温湿度（AHT20 替换 DHT11）-------------------------------------*/
+/* 说明：已用 AHT20 全面替代 DHT11（DHT11 驱动已从工程移除）。
+ *       AHT20 走软件 I2C，引脚见 aht20.h：SCL=PA11 / SDA=PA12。
+ */
+static float aht_temp = 0.0f, aht_humi = 0.0f;
+static int   aht_status = -99;      /* 最近一次 AHT20_Read 的返回码 */
 
-/* DHT11 两次读取间隔必须 >= 1s，实际按例程用 2s，用 1ms 定时中断打节拍 */
-static uint16_t dht11_cnt = 0;
-volatile uint8_t dht11_due = 1; // 1：到时间了，可以读一次
-
-void DHT11_Tick(void)
+/* 显示温湿度（保留 1 位小数，不用 %f，避免浮点 printf 开销） */
+void Show_AHT20_UI(void)
 {
-    if (++dht11_cnt >= 2000)
-    {
-        dht11_cnt = 0;
-        dht11_due = 1;
-    }
-}
+    int t10, h10, ti, td, hi, hd;
 
-static uint8_t dht_temp = 0, dht_humi = 0; // 缓存最近一次成功读到的值
-static uint8_t dht_err = DHT11_OK;
-
-//显示温度计
-void Show_DHT11_UI(void)
-{
     OLED_ShowImage(0, 0, 16, 16, Return);
-    if (dht_err == DHT11_OK)
+
+    if (aht_status == AHT20_OK)
     {
-        OLED_Printf(0, 16, OLED_8X16, "Temp: %d C", dht_temp);
-        OLED_Printf(0, 32, OLED_8X16, "Humi: %d %%RH", dht_humi);
+        t10 = (int)(aht_temp * 10.0f);
+        h10 = (int)(aht_humi * 10.0f);
+        ti = t10 / 10; td = t10 % 10; if (td < 0) td = -td;
+        hi = h10 / 10; hd = h10 % 10; if (hd < 0) hd = -hd;
+
+        OLED_ShowString(0, 16, "Temp:", OLED_8X16);
+        if (t10 < 0)
+            OLED_Printf(40, 16, OLED_8X16, "-%d.%d C", -ti, td);
+        else
+            OLED_Printf(40, 16, OLED_8X16, "%d.%d C", ti, td);
+
+        OLED_ShowString(0, 32, "Humi:", OLED_8X16);
+        OLED_Printf(40, 32, OLED_8X16, "%d.%d %%", hi, hd);
     }
     else
     {
-        OLED_ShowString(0, 16, "DHT11 Error", OLED_8X16);
+        OLED_ShowString(0, 16, "AHT20 Error", OLED_8X16);
+        OLED_Printf(0, 32, OLED_8X16, "Code:%d", aht_status);
+        OLED_ShowString(0, 48, "Check PA11/PA12", OLED_6X8);
     }
 }
 
-//用按键控制退出DHT11界面的函数
-int DHT11(void)
+/* 温湿度页面：进入后每 ~0.6s 读一次 AHT20；K3 返回 */
+int AHT20_Page(void)
 {
-    uint8_t need_redraw = 1;
-
-    dht11_due = 1; // 进入页面立刻读一次
     while (1)
     {
         KeyNum = Key_GetNum();
@@ -574,21 +577,14 @@ int DHT11(void)
             return 0;
         }
 
-        if (dht11_due) // 每 2s 才真正读一次，读到后缓存下来
-        {
-            dht11_due = 0;
-            dht_err = DHT11_Read_Data(&dht_temp, &dht_humi);
-            need_redraw = 1; // 有新数据（或错误状态）才重画，不必每帧刷屏
-        }
+        aht_status = AHT20_Read(&aht_temp, &aht_humi);   /* 约 80ms */
 
-        if (need_redraw)
-        {
-            need_redraw = 0;
-            OLED_Clear();
-            Show_DHT11_UI();
-            OLED_ReverseArea(0, 0, 16, 16);
-            OLED_Update();
-        }
+        OLED_Clear();
+        Show_AHT20_UI();
+        OLED_ReverseArea(0, 0, 16, 16);
+        OLED_Update();
+
+        Delay_ms(500);   /* 约每 0.6s 刷新一次 */
     }
 }
 

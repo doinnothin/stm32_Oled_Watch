@@ -8,8 +8,7 @@ int MPU6050(void);
 int Gradienter(void);
 int Emoji(void);
 int Game(void);
-int DHT11(void);
-void DHT11_Tick(void);
+int AHT20_Page(void);
 
 
 #endif /* __MENU_SUB_H__ */

@@ -1,7 +1,7 @@
 #ifndef __BIRD_H
 #define __BIRD_H
 
-void BirdGame_Reset(void);
 int BirdGame_Animation(void);
+void Bird_Tick(void);
 
 #endif
