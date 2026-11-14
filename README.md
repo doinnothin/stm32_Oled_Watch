@@ -48,7 +48,7 @@
 - 🔗 **新增 ESP32-C3 联网**：WiFi + NTP 校时 + 心知天气（实况 + 三天预报），通过 UART 文本协议 `$OK / $FC / $FD` 发给 STM32。
 - 🛡️ **串口协议加 CRC16**：每帧 `$...*<CRC16>`（CRC-16/CCITT-FALSE），STM32 校验失败直接丢帧，抗干扰/防错位。
 - 🔁 **可靠传输**：序号 `seq` + `$AK` 应答 + 200ms 超时重传(最多3次) + STM32 去重；解决首帧丢失与瞬断，断网时保留上次数据。
-- 📱 **SoftAP 配网 + OTA + 手机虚拟按键**：C3 开热点网页配置 WiFi/城市/key（存 NVS）；同网段网页点按钮即可远程操作手表菜单；支持 ArduinoOTA 在线升级。
+- 📱 **局域网 Web 配置 + OTA + 手机虚拟按键**：WiFi 在固件顶部写死直连；同一 WiFi 下浏览器打开 C3 的 IP 即可改城市/key、点按钮远程操作手表菜单；支持 ArduinoOTA。
 - 📈 **天气页第二页**：新增**多天温度趋势曲线**（高/低温折线），KEY1/KEY2 左右滑动切换；数据来自 `$FD` 多天预报（心知免费版 3 天，付费最多 15 天，代码自动适配）。
 - 🧱 **新增分层驱动**：`Serial.c/h`、`esp32c3.c/h`、`weather.c/h`。
 - 🏠 **首页升级**：显示真实时间、当前天气/温度、步数。
@@ -149,12 +149,13 @@ $<类型>,<seq>,<数据...>*<CRC16>\r\n     // CRC16 为 4 位十六进制（大
 > 完整协议（时序、CRC 原理、示例帧、参数）见 [docs/串口协议说明.md](docs/串口协议说明.md)。
 
 <a id="portal"></a>
-## 📱 SoftAP 配网 / OTA / 手机虚拟按键
+## 📱 局域网 Web 配置 / 控制 / OTA
 
-- **首次使用/换 WiFi**：C3 上电若没有凭据或连不上，会开热点 **`STM32-Watch-Config`（密码 `12345678`）**，手机连上打开 **http://192.168.4.1**，填写 WiFi、城市拼音、心知 key，保存后自动重启并联网。
-- **手机虚拟按键**：C3 联网后，手机浏览器打开 `http://<C3的IP>`，页面上「▲ 上 / ● 确认 / ▼ 下」三个按钮，通过 HTTP → C3 → 串口 `$KEY` 帧 → STM32 注入按键，**远程控制手表菜单**。
-- **OTA 升级**：C3 联网后支持 **ArduinoOTA**（主机名 `stm32-watch`），用 Arduino IDE / PlatformIO 的“网络端口”即可在线烧录 C3 固件，无需插线。
-- 配置保存在 C3 的 **NVS(Preferences)**，断电不丢。
+- **WiFi 直连**：在 `esp32c3_firmware/ESP32C3_WeatherClock/ESP32C3_WeatherClock.ino` 顶部改 `WIFI_SSID / WIFI_PASSWORD`，上电直接连（失败每 5s 自动重连），**不使用 SoftAP 热点配网**。
+- **手机/电脑与 C3 在同一 WiFi**，浏览器打开 `http://<C3的IP>`（串口会打印 `Web / OTA: http://...`）：
+  - **城市 / 心知 key** 表单 → 保存即生效（存 NVS，断电不丢）；
+  - **▲ 上 / ● 确认 / ▼ 下** 虚拟按键 → 通过串口 `$KEY` 帧远程操作手表菜单。
+- **OTA 升级**：ArduinoOTA 主机名 `stm32-watch`，用 Arduino IDE / PlatformIO 的“网络端口”在线烧录 C3。
 
 <a id="structure"></a>
 ## 📁 目录结构
