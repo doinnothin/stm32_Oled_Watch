@@ -232,22 +232,71 @@ static uint16_t crc16_ccitt(const uint8_t *data, uint16_t len)
   return crc;
 }
 
-/* 统一组帧：body 形如 "$OK,..."（不含 CRC），发送 body*HHHH\r\n */
+/* ===== 可靠传输：序号 + ACK + 超时重传（去重由 STM32 端完成） ===== */
+#define ACK_TIMEOUT_MS 200
+#define FRAME_RETRY    3
+static uint8_t g_seq = 0;
+
+/* 统一组帧：body 形如 "$OK,<seq>,..."（不含 CRC），发送 body*HHHH\r\n */
 static void sendFrame(const char *body)
 {
   uint16_t c = crc16_ccitt((const uint8_t *)body, (uint16_t)strlen(body));
   STM32Serial.printf("%s*%04X\r\n", body, c);
 }
 
-/* 把结果发一行给 STM32 */
+/* 等待 STM32 回 "$AK,<seq>"（超时返回 false） */
+static bool waitAck(uint8_t seq, uint32_t timeout_ms)
+{
+  uint32_t t0 = millis();
+  char buf[40];
+  int bi = 0;
+  while ((uint32_t)(millis() - t0) < timeout_ms)
+  {
+    while (STM32Serial.available())
+    {
+      char c = (char)STM32Serial.read();
+      if (c == '\n')
+      {
+        int s = -1;
+        buf[bi] = '\0';
+        if (sscanf(buf, "$AK,%d", &s) == 1 && (uint8_t)s == seq) return true;
+        bi = 0;
+      }
+      else if (c != '\r')
+      {
+        if (bi < (int)sizeof(buf) - 1) buf[bi++] = c;
+        else bi = 0;
+      }
+    }
+    delay(3);
+  }
+  return false;
+}
+
+/* 可靠发送：同一 seq 最多发 FRAME_RETRY 次，直到收到 ACK */
+static bool sendReliable(const char *body)
+{
+  uint8_t seq = g_seq;
+  int attempt;
+  for (attempt = 0; attempt < FRAME_RETRY; attempt++)
+  {
+    sendFrame(body);
+    if (waitAck(seq, ACK_TIMEOUT_MS)) { g_seq++; return true; }
+    Serial.printf("重传 seq=%u (第 %d 次)\r\n", seq, attempt + 1);
+  }
+  g_seq++;
+  return false;
+}
+
+/* 把结果发一行给 STM32（带 seq + CRC + 重传） */
 static void sendLine(bool ok, uint32_t epoch, int wcode, int temp)
 {
   char buf[64];
   if (ok)
-    snprintf(buf, sizeof(buf), "$OK,%lu,%d,%d", (unsigned long)epoch, wcode, temp);
+    snprintf(buf, sizeof(buf), "$OK,%u,%lu,%d,%d", (unsigned)g_seq, (unsigned long)epoch, wcode, temp);
   else
-    snprintf(buf, sizeof(buf), "$ERR,0,0,0");
-  sendFrame(buf);
+    snprintf(buf, sizeof(buf), "$ERR,%u", (unsigned)g_seq);
+  sendReliable(buf);
 }
 
 /* 一次完整刷新：WiFi → 时间 → 天气 → 发送 */
@@ -296,16 +345,17 @@ static void doUpdate()
       /* 不足 3 天则用最后一天补齐，保证列表页有 3 行 */
       for (i = fn; i < 3; i++) { fcode[i] = fcode[fn - 1]; fhi[i] = fhi[fn - 1]; flo[i] = flo[fn - 1]; }
 
-      snprintf(buf, sizeof(buf), "$FC,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+      snprintf(buf, sizeof(buf), "$FC,%u,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+               (unsigned)g_seq,
                fcode[0], fhi[0], flo[0], fcode[1], fhi[1], flo[1], fcode[2], fhi[2], flo[2]);
-      sendFrame(buf);
+      sendReliable(buf);
 
-      /* $FD,<n>,c0,h0,l0,... 全部天数（趋势曲线页） */
+      /* $FD,<seq>,<n>,c0,h0,l0,... 全部天数（趋势曲线页） */
       {
-        int p = snprintf(buf, sizeof(buf), "$FD,%d", fn);
+        int p = snprintf(buf, sizeof(buf), "$FD,%u,%d", (unsigned)g_seq, fn);
         for (i = 0; i < fn && p < (int)sizeof(buf) - 16; i++)
           p += snprintf(buf + p, sizeof(buf) - p, ",%d,%d,%d", fcode[i], fhi[i], flo[i]);
-        sendFrame(buf);
+        sendReliable(buf);
       }
 
       Serial.printf("预报 -> n=%d  %d/%d/%d ...\r\n", fn, fhi[0], flo[0], fcode[0]);

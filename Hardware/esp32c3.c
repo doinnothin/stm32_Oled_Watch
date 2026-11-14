@@ -23,6 +23,10 @@ static uint16_t s_fc_cnt   = 0;
 static uint16_t s_crc_ok   = 0;
 static uint16_t s_crc_err  = 0;
 
+/* 可靠传输：记录已应用的最后一个序号，用于重传去重 */
+static uint8_t s_last_seq = 0;
+static uint8_t s_has_seq  = 0;
+
 /* 多天预报（趋势曲线用），最多 15 天（心知付费上限） */
 #define TREND_MAX 15
 static uint8_t s_tr_count = 0;
@@ -98,19 +102,32 @@ static uint8_t hexVal(char c)
     return 0xFF;
 }
 
-/* 处理一整行（不含 \r\n）：先校验 CRC，再按 "$XX," 前缀分发 */
+/* 回 ACK：$AK,<seq>*HHHH\r\n */
+static void sendAck(uint8_t seq)
+{
+    char body[16], out[28];
+    uint16_t c;
+    snprintf(body, sizeof(body), "$AK,%u", (unsigned)seq);
+    c = crc16_ccitt((const uint8_t *)body, (uint16_t)strlen(body));
+    snprintf(out, sizeof(out), "%s*%04X\r\n", body, c);
+    Serial_SendString(2, out);
+}
+
+/* 处理一整行（不含 \r\n）：CRC 校验 → 序号去重 → 分发 → 回 ACK */
 static void ProcessLine(char *line, uint16_t len)
 {
     char *star;
     uint16_t crcpos, rx, calc;
     uint8_t i;
+    int seq_i = -1;
+    uint8_t sq = 0;
 
     if (len < 8) return;
 
     star = (char *)memchr(line, '*', len);
     if (star == NULL) { s_crc_err++; return; }
     crcpos = (uint16_t)(star - line);
-    if ((uint32_t)crcpos + 5 > len) { s_crc_err++; return; }   /* '*' + 4 位十六进制 */
+    if ((uint32_t)crcpos + 5 > len) { s_crc_err++; return; }
 
     rx = 0;
     for (i = 0; i < 4; i++)
@@ -119,17 +136,26 @@ static void ProcessLine(char *line, uint16_t len)
         if (hv == 0xFF) { s_crc_err++; return; }
         rx = (uint16_t)((rx << 4) | hv);
     }
-    calc = crc16_ccitt((const uint8_t *)line, crcpos);
-    if (rx != calc) { s_crc_err++; return; }
+    if (rx != crc16_ccitt((const uint8_t *)line, crcpos)) { s_crc_err++; return; }
     s_crc_ok++;
 
-    line[crcpos] = '\0';                       /* 截掉 "*HHHH"，后面只看内容 */
+    line[crcpos] = '\0';                       /* 截掉 "*HHHH" */
+
+    /* 各类型第 1 个数据字段都是 seq */
+    if (sscanf(line + 4, "%d", &seq_i) == 1 && seq_i >= 0) sq = (uint8_t)seq_i;
+
+    /* 重传去重：seq 与上一帧相同 → 已经处理过，只补发 ACK，不重复应用 */
+    if (seq_i >= 0 && s_has_seq && sq == s_last_seq)
+    {
+        sendAck(sq);
+        return;
+    }
 
     if (strncmp(line, "$OK,", 4) == 0)
     {
         unsigned long utc = 0;
         int code = -1, temp = 0;
-        if (sscanf(line + 4, "%lu,%d,%d", &utc, &code, &temp) == 3 && utc > 1600000000UL)
+        if (sscanf(line + 4, "%d,%lu,%d,%d", &seq_i, &utc, &code, &temp) == 4 && utc > 1600000000UL)
         {
             s_ok_cnt++;
             RTC_SetCounter((uint32_t)utc);
@@ -147,8 +173,8 @@ static void ProcessLine(char *line, uint16_t len)
     else if (strncmp(line, "$FC,", 4) == 0)
     {
         int c0, h0, l0, c1, h1, l1, c2, h2, l2, k;
-        if (sscanf(line + 4, "%d,%d,%d,%d,%d,%d,%d,%d,%d",
-                   &c0, &h0, &l0, &c1, &h1, &l1, &c2, &h2, &l2) == 9)
+        if (sscanf(line + 4, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+                   &seq_i, &c0, &h0, &l0, &c1, &h1, &l1, &c2, &h2, &l2) == 10)
         {
             s_fc_cnt++;
             s_fc_code[0] = c0; s_fc_hi[0] = h0; s_fc_lo[0] = l0;
@@ -164,29 +190,41 @@ static void ProcessLine(char *line, uint16_t len)
     }
     else if (strncmp(line, "$FD,", 4) == 0)
     {
-        char *tok = strtok(line + 4, ",");
-        if (tok != NULL)
+        char *t = strtok(line + 4, ",");          /* 第1个 token = seq */
+        if (t != NULL)
         {
-            int n = atoi(tok), k = 0;
-            while (k < TREND_MAX)
+            char *tn = strtok(NULL, ",");         /* 第2个 token = n */
+            if (tn != NULL)
             {
-                char *tc = strtok(NULL, ","); if (tc == NULL) break;
-                char *th = strtok(NULL, ","); if (th == NULL) break;
-                char *tl = strtok(NULL, ","); if (tl == NULL) break;
-                s_tr_code[k] = atoi(tc);
-                s_tr_hi[k]   = atoi(th);
-                s_tr_lo[k]   = atoi(tl);
-                strncpy(s_tr_text[k], CodeToText(s_tr_code[k]), sizeof(s_tr_text[k]) - 1);
-                s_tr_text[k][sizeof(s_tr_text[k]) - 1] = '\0';
-                k++;
+                int n = atoi(tn), k = 0;
+                while (k < TREND_MAX)
+                {
+                    char *tc = strtok(NULL, ","); if (tc == NULL) break;
+                    char *th = strtok(NULL, ","); if (th == NULL) break;
+                    char *tl = strtok(NULL, ","); if (tl == NULL) break;
+                    s_tr_code[k] = atoi(tc);
+                    s_tr_hi[k]   = atoi(th);
+                    s_tr_lo[k]   = atoi(tl);
+                    strncpy(s_tr_text[k], CodeToText(s_tr_code[k]), sizeof(s_tr_text[k]) - 1);
+                    s_tr_text[k][sizeof(s_tr_text[k]) - 1] = '\0';
+                    k++;
+                }
+                s_tr_count = (uint8_t)k;
+                (void)n;
             }
-            s_tr_count = (uint8_t)k;
-            (void)n;
         }
     }
     else if (strncmp(line, "$ERR", 4) == 0)
     {
-        s_valid = 0;                            /* 这次没取到，保留上次显示 */
+        /* 断网容错：保留上一次的有效天气/时间，不清空显示 */
+        /* seq 已解析，下面统一记录并回 ACK */
+    }
+
+    if (seq_i >= 0)
+    {
+        s_last_seq = (uint8_t)seq_i;
+        s_has_seq = 1;
+        sendAck((uint8_t)seq_i);
     }
 }
 
