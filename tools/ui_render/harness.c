@@ -24,6 +24,7 @@ void Show_Slope_UI(void);
 void Show_Emoji_UI(void);
 void Show_Game_UI(void);
 void Show_Weather_UI(void);
+void Show_Trend_UI(void);
 int  AHT20_Page(void);
 void MPU6050_Calculation(void);
 
@@ -101,6 +102,10 @@ int main(void)
     reset_buf(); g_wvalid = 1; g_temp = 24; g_fcvalid = 1; Show_Weather_UI();
     OLED_ReverseArea(0, 0, 16, 16);
     dump_framebuffer("12_weather");
+
+    reset_buf(); g_wvalid = 1; g_temp = 24; g_fcvalid = 1; Show_Trend_UI();
+    OLED_ReverseArea(0, 0, 16, 16);
+    dump_framebuffer("12b_weather_trend");
 
     reset_buf(); g_aht_t = 26.4f; g_aht_h = 58.2f; g_aht_ret = 0;
     g_capture = 1; g_captured = 0; g_capture_name = "13_temp_humi"; g_force_exit = 0;

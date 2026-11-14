@@ -84,6 +84,15 @@ uint16_t ESP32C3_RxLines(void) { return 12; }
 uint16_t ESP32C3_OkCount(void) { return 6; }
 uint16_t ESP32C3_FcCount(void) { return 6; }
 
+/* 多天趋势（用于温度趋势页渲染） */
+static int g_tr_hi[5] = {27, 28, 26, 25, 24};
+static int g_tr_lo[5] = {18, 19, 17, 16, 15};
+uint8_t ESP32C3_TrendCount(void) { return 3; }
+char *ESP32C3_TrendText(int day) { return (day >= 0 && day < 3) ? ftext[day] : (char *)""; }
+int ESP32C3_TrendHigh(int day) { return (day >= 0 && day < 5) ? g_tr_hi[day] : 0; }
+int ESP32C3_TrendLow(int day) { return (day >= 0 && day < 5) ? g_tr_lo[day] : 0; }
+int ESP32C3_TrendCode(int day) { (void)day; return 0; }
+
 /* ---------------------------------------------------------------- Pedometer */
 uint32_t g_steps = 1234;
 void Pedometer_Init(void) {}

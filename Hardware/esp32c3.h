@@ -27,4 +27,11 @@ uint16_t ESP32C3_RxLines(void);
 uint16_t ESP32C3_OkCount(void);
 uint16_t ESP32C3_FcCount(void);
 
+/* 多天预报（趋势曲线），day: 0=今天 */
+uint8_t ESP32C3_TrendCount(void);
+char*   ESP32C3_TrendText(int day);
+int     ESP32C3_TrendHigh(int day);
+int     ESP32C3_TrendLow(int day);
+int     ESP32C3_TrendCode(int day);
+
 #endif

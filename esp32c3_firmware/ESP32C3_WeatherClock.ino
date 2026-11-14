@@ -174,25 +174,26 @@ static bool fetchWeather(int &wcode, int &temp)
   return true;
 }
 
-/* 请求三天预报（心知 daily 接口）：code/hi/lo 各 3 天 */
-static bool fetchForecast(int code[3], int hi[3], int lo[3])
+/* 请求多天预报（心知 daily 接口）：返回实际天数。免费版通常只回 3 天，付费最多 15 天 */
+#define MAX_DAYS 15
+static int fetchForecast(int code[], int hi[], int lo[])
 {
   HTTPClient http;
   String url = String("http://api.seniverse.com/v3/weather/daily.json?key=")
-             + SENIVERSE_KEY + "&location=" + CITY + "&language=en&unit=c&start=0&days=3";
-  if (!http.begin(url)) { Serial.println("预报: http.begin 失败"); return false; }
+             + SENIVERSE_KEY + "&location=" + CITY + "&language=en&unit=c&start=0&days=" + String(MAX_DAYS);
+  if (!http.begin(url)) { Serial.println("预报: http.begin 失败"); return 0; }
   http.setTimeout(8000);
-  if (http.GET() != 200) { http.end(); return false; }
+  if (http.GET() != 200) { http.end(); return 0; }
   String p = http.getString();
   http.end();
 
   int di = p.indexOf("\"daily\"");
-  if (di < 0) return false;
+  if (di < 0) return 0;
   int ai = p.indexOf('[', di);
-  if (ai < 0) return false;
+  if (ai < 0) return 0;
 
   int idx = ai + 1, got = 0;
-  while (got < 3 && idx < (int)p.length())
+  while (got < MAX_DAYS && idx < (int)p.length())
   {
     int b = p.indexOf('{', idx);
     if (b < 0) break;
@@ -208,12 +209,12 @@ static bool fetchForecast(int code[3], int hi[3], int lo[3])
     int c = readJsonInt(obj, "\"code_day\"", o1);
     int h = readJsonInt(obj, "\"high\"", o2);
     int l = readJsonInt(obj, "\"low\"", o3);
-    if (!(o1 && o2 && o3)) return false;
+    if (!(o1 && o2 && o3)) break;
     code[got] = c; hi[got] = h; lo[got] = l;
     got++;
     idx = e + 1;
   }
-  return got == 3;
+  return got;
 }
 
 /* 把结果发一行给 STM32 */
@@ -257,17 +258,29 @@ static void doUpdate()
   Serial.printf("发送 -> utc=%lu  code=%d  temp=%d%s\r\n",
                 (unsigned long)epoch, wcode, temp, wok ? "" : "  (天气本次失败)");
 
-  /* 三天预报：单独一行 $FC,c0,h0,l0,c1,h1,l1,c2,h2,l2 */
+  /* 多天预报：
+     - $FC 前 3 天 → 天气列表页（今日/明日/后日）
+     - $FD,<n>,c0,h0,l0,... 全部天数 → 温度趋势曲线页
+     免费版 key 实际只回 3 天；付费 key 最多 15 天，代码无需改。 */
   {
-    int fcode[3] = {0, 0, 0}, fhi[3] = {0, 0, 0}, flo[3] = {0, 0, 0};
-    if (fetchForecast(fcode, fhi, flo))
+    int fcode[MAX_DAYS], fhi[MAX_DAYS], flo[MAX_DAYS];
+    int fn = fetchForecast(fcode, fhi, flo);
+    if (fn > 0)
     {
+      int i;
+      /* 不足 3 天则用最后一天补齐，保证列表页有 3 行 */
+      for (i = fn; i < 3; i++) { fcode[i] = fcode[fn - 1]; fhi[i] = fhi[fn - 1]; flo[i] = flo[fn - 1]; }
+
       STM32Serial.printf("$FC,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
                          fcode[0], fhi[0], flo[0],
                          fcode[1], fhi[1], flo[1],
                          fcode[2], fhi[2], flo[2]);
-      Serial.printf("预报 -> %d/%d/%d  %d/%d/%d  %d/%d/%d\r\n",
-                    fcode[0], fhi[0], flo[0], fcode[1], fhi[1], flo[1], fcode[2], fhi[2], flo[2]);
+
+      STM32Serial.printf("$FD,%d", fn);
+      for (i = 0; i < fn; i++) STM32Serial.printf(",%d,%d,%d", fcode[i], fhi[i], flo[i]);
+      STM32Serial.print("\r\n");
+
+      Serial.printf("预报 -> n=%d  %d/%d/%d ...\r\n", fn, fhi[0], flo[0], fcode[0]);
     }
     else
     {

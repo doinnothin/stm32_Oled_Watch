@@ -12,6 +12,7 @@ items = [
     ("07_level", "水平仪"), ("08_vertical", "竖直仪"),
     ("09_slope", "斜坡仪"), ("10_emoji", "动态表情"),
     ("11_game_menu", "小游戏"), ("12_weather", "天气·三天预报"),
+    ("12b_weather_trend", "温度趋势曲线"),
     ("13_temp_humi", "温湿度 AHT20"), ("14_setting_menu", "设置"),
     ("15_set_date", "设置日期"), ("16_set_time", "设置时间"),
 ]
@@ -22,7 +23,7 @@ try:
 except Exception:
     f_title = f_cap = f_sub = ImageFont.load_default()
 
-cols, rows = 4, 4
+cols, rows = 4, 5
 cell_w, cell_h, pad = 384, 210, 22
 img_w, img_h = 360, 180
 top = 92

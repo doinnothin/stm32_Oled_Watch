@@ -1,6 +1,7 @@
 #include "esp32c3.h"
 #include "Serial.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static uint8_t s_valid = 0;
@@ -19,6 +20,14 @@ static char    s_fc_text[3][16] = {"", "", ""};
 static uint16_t s_rx_lines = 0;
 static uint16_t s_ok_cnt   = 0;
 static uint16_t s_fc_cnt   = 0;
+
+/* 多天预报（趋势曲线用），最多 15 天（心知付费上限） */
+#define TREND_MAX 15
+static uint8_t s_tr_count = 0;
+static int     s_tr_code[TREND_MAX];
+static int     s_tr_hi[TREND_MAX];
+static int     s_tr_lo[TREND_MAX];
+static char    s_tr_text[TREND_MAX][16];
 
 /* 心知天气 code（0~38）→ 中文，和开源天气时钟保持一致 */
 static const char* CodeToText(int code)
@@ -125,6 +134,33 @@ void ESP32C3_Poll(void)
         }
     }
 
+    /* 多天预报：$FD,<n>,c0,h0,l0,c1,h1,l1,...（温度趋势页用） */
+    {
+        char *r = strstr(USART2_RX_BUF, "$FD,");
+        if (r != NULL)
+        {
+            char *tok = strtok(r + 4, ",");
+            if (tok != NULL)
+            {
+                int n = atoi(tok), i = 0;
+                while (i < TREND_MAX)
+                {
+                    char *tc = strtok(NULL, ","); if (tc == NULL) break;
+                    char *th = strtok(NULL, ","); if (th == NULL) break;
+                    char *tl = strtok(NULL, ","); if (tl == NULL) break;
+                    s_tr_code[i] = atoi(tc);
+                    s_tr_hi[i]   = atoi(th);
+                    s_tr_lo[i]   = atoi(tl);
+                    strncpy(s_tr_text[i], CodeToText(s_tr_code[i]), sizeof(s_tr_text[i]) - 1);
+                    s_tr_text[i][sizeof(s_tr_text[i]) - 1] = '\0';
+                    i++;
+                }
+                s_tr_count = (uint8_t)i;    /* 实际解析到的天数 */
+                (void)n;
+            }
+        }
+    }
+
     USART2_RX_LEN = 0;
     memset(USART2_RX_BUF, 0, 128);
 }
@@ -143,3 +179,10 @@ int     ESP32C3_ForecastCode(int d) { if (d < 0 || d > 2) return -1; return s_fc
 uint16_t ESP32C3_RxLines(void) { return s_rx_lines; }
 uint16_t ESP32C3_OkCount(void) { return s_ok_cnt; }
 uint16_t ESP32C3_FcCount(void) { return s_fc_cnt; }
+
+/* 多天预报（趋势）取值：0=今天 */
+uint8_t ESP32C3_TrendCount(void) { return s_tr_count; }
+char*   ESP32C3_TrendText(int d) { if (d < 0 || d >= (int)s_tr_count) return ""; return s_tr_text[d]; }
+int     ESP32C3_TrendHigh(int d) { if (d < 0 || d >= (int)s_tr_count) return 0; return s_tr_hi[d]; }
+int     ESP32C3_TrendLow(int d)  { if (d < 0 || d >= (int)s_tr_count) return 0; return s_tr_lo[d]; }
+int     ESP32C3_TrendCode(int d) { if (d < 0 || d >= (int)s_tr_count) return -1; return s_tr_code[d]; }
