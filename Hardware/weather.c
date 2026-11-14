@@ -175,6 +175,7 @@ int Weather(void)
 
     while (1)
     {
+        ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
         if (LowPower_Tick()) continue;
         KeyNum = Key_GetNum();
 

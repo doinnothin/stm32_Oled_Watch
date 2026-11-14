@@ -66,6 +66,7 @@ int StopWatch(void)
 {
     while (1)
     {
+        ESP32C3_Poll();   /* 让虚拟按键在本页也生效 */
         KeyNum = Key_GetNum();
         uint8_t stopwatch_flag_temp = 0;
         if (KeyNum == 1) // 上一项
@@ -140,6 +141,7 @@ int LED(void)
 {
     while (1)
     {
+        ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
         if (LowPower_Tick()) continue;
         KeyNum = Key_GetNum();
         uint8_t led_flag_temp = 0;
@@ -268,6 +270,7 @@ int MPU6050(void)
     Key_Reset();
     while (1)
     {
+        ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
         if (LowPower_Tick()) continue;
         if (Key_Check(KEY_2, KEY_LONG)) MPU6050_Calibrate();   // 长按K2校准
 
@@ -376,6 +379,7 @@ int Gradienter_Level(void)
     Key_Reset();
     while (1)
     {
+        ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
         if (LowPower_Tick()) continue;
         if (Key_Check(KEY_2, KEY_LONG)) MPU6050_Calibrate();
         if (Key_Check(KEY_3, KEY_SINGLE)) { OLED_Clear(); OLED_Update(); Key_Reset(); return 0; }
@@ -390,6 +394,7 @@ int Gradienter_Vertical(void)
     Key_Reset();
     while (1)
     {
+        ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
         if (LowPower_Tick()) continue;
         if (Key_Check(KEY_2, KEY_LONG)) MPU6050_Calibrate();
         if (Key_Check(KEY_3, KEY_SINGLE)) { OLED_Clear(); OLED_Update(); Key_Reset(); return 0; }
@@ -404,6 +409,7 @@ int Gradienter_Slope(void)
     Key_Reset();
     while (1)
     {
+        ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
         if (LowPower_Tick()) continue;
         if (Key_Check(KEY_2, KEY_LONG)) MPU6050_Calibrate();
         if (Key_Check(KEY_3, KEY_SINGLE)) { OLED_Clear(); OLED_Update(); Key_Reset(); return 0; }
@@ -428,6 +434,7 @@ int Gradienter(void)
 {
     while (1)
     {
+        ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
         if (LowPower_Tick()) continue;
         KeyNum = Key_GetNum();
         uint8_t grad_flag_temp = 0;
@@ -519,6 +526,7 @@ int Emoji(void)
 {
 	while(1)
 	{
+	    ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
 	    if (LowPower_Tick()) continue;
 		KeyNum=Key_GetNum();
 		if(KeyNum==3)
@@ -577,6 +585,7 @@ int AHT20_Page(void)
 {
     while (1)
     {
+        ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
         if (LowPower_Tick()) continue;
         KeyNum = Key_GetNum();
         if (KeyNum == 3)
@@ -612,6 +621,7 @@ int Game(void)
 {
 	while(1)
 	{
+        ESP32C3_Poll();   /* 让虚拟按键在本页也生效 */
 		/* 在游戏菜单里长按K2校准一次，进入游戏就不用每局都校准了 */
 		if (Key_Check(KEY_2, KEY_LONG))
 		{

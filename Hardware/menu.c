@@ -152,6 +152,7 @@ int SettingPage(void)
 {
     while (1) // 页面函数内部自己循环，只有按"返回"才退出
     {
+        ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
         if (LowPower_Tick()) continue;
         KeyNum = Key_GetNum();
         uint8_t setflag_temp = 0;
@@ -278,6 +279,7 @@ int Menu_Page(void)
     uint8_t Dirflag = 2; // 移动标志位 置1 移动到上一项 右移 置2 移动到下一项 左移
     while (1)            // 页面函数内部自己循环，只有按"返回"才退出
     {
+        ESP32C3_Poll();   /* 各页面都要解析串口：虚拟按键/天气更新/回ACK */
         if (LowPower_Tick()) continue;
         uint8_t menuflag_temp = 0;
         /* K1/K2：单击走一格；长按1s走一格，之后每1s走一格（KEY_LONG首格，KEY_REPEAT后续） */
