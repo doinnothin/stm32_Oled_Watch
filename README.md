@@ -2,24 +2,25 @@
 
 # ⌚ STM32 可编程多功能手表 · v2.0
 
-**在 v1 的基础上加了一颗 ESP32-C3：现在它能看到真实的时间和天气。** 🌤️
+**在 v1 的基础上加了一颗 ESP32-C3：真实天气、网络校时、手机网页控制，还更省电。** 🌤️
 
 [![MCU](https://img.shields.io/badge/MCU-STM32F103C8T6-03234B)](https://www.st.com/)
 ![WiFi](https://img.shields.io/badge/WiFi-ESP32--C3%20SuperMini-E7352C)
 ![Language](https://img.shields.io/badge/Language-C-283593)
 ![Build](https://img.shields.io/badge/Build-EIDE%20%2F%20Keil%20MDK-00b4d8)
 ![Version](https://img.shields.io/badge/Version-v2.0-orange)
-![License](https://img.shields.io/badge/License-MIT-green)
 
-📽️ [实机演示](#demo) · 🆕 [v2 更新](#changelog) · 🔧 [硬件接线](#hardware) · 🔌 [串口协议](#protocol) · 🚀 [编译烧录](#quickstart)
+📽️ [实机演示](#demo) · 🆕 [v2 更新](#changelog) · 🔧 [硬件接线](#hardware) · 🔌 [串口协议](#protocol) · 📱 [Web 控制](#portal) · 🚀 [编译烧录](#quickstart)
 
 </div>
 
 ## 🧭 项目简介
 
-这是一块基于 **STM32F103C8T6** 的可编程多功能手表。v1 里它已经能走时、滑动菜单、量姿态、玩游戏；到了 **v2**，我们给它配了一颗 **ESP32-C3 SuperMini**：由 C3 负责连 WiFi、取网络时间、拉真实天气，再通过串口把数据喂给 STM32 显示。
+这是一块基于 **STM32F103C8T6** 的可编程多功能手表。v1 里它已经能走时、滑动菜单、量姿态、玩游戏；到了 **v2**，又配上一颗 **ESP32-C3 SuperMini**：由 C3 负责连 WiFi、走 NTP 取网络时间、拉真实天气，再通过一条 UART 把数据喂给 STM32 显示。
 
-于是手表首页有了**真实时间 + 当前天气 + 步数**，还多了一个能看到**今日 / 明日 / 后日 三天预报**的天气页。STM32 侧依然跑在**裸机 + 标准外设库（SPL）**上，C3 侧是 Arduino 固件，两边通过一条 UART 通信，分工清清楚楚。
+于是手表首页有了**真实时间 + 当前天气 + 步数**，天气页能看到**今日 / 明日 / 后日 三天预报**，还能滑到**多天温度趋势曲线**。串口链路做了 **CRC16 校验 + 序号应答 + 超时重传**，抗干扰、断线也能保住上次数据；同一 WiFi 下用手机浏览器打开 C3 的 IP，就能**改城市 / 心知 key、看实时状态、点虚拟按键远程操作手表，甚至 OTA 升级**。
+
+STM32 侧跑在**裸机 + 标准外设库（SPL）**上，C3 侧是 Arduino 固件，分工清清楚楚；各 UI 页面还支持**无操作自动息屏 + 进 STOP 低功耗**，按键 / RTC 唤醒，更省电。
 
 
 <a id="features"></a>
@@ -58,19 +59,11 @@
 <a id="demo"></a>
 ## 📽️ 实机演示
 
-> 🖥️ **下面所有界面，都是把固件里「真实运行的同一份 C 代码」搬到 PC 上逐像素渲染出来的**（读取 128×64 OLED 显存导出，非手绘/PS），
+> 🖥️ **这张总览，是把固件里「真实运行的同一份 C 代码」搬到 PC 上逐像素渲染出来的**（读取 128×64 OLED 显存导出，非手绘 / PS），与硬件屏幕几乎一致。
 
 <p align="center"><img src="demo/ui/00_overview.png" alt="STM32 手表全部 UI 总览（固件同源代码渲染）" width="94%"></p>
 
-| | | | |
-|:--:|:--:|:--:|:--:|
-| <img src="demo/ui/01_home_clock.png" width="240"><br>**首页时钟**<br>时间 · 天气 · 步数 | <img src="demo/ui/02_menu.png" width="240"><br>**滑动菜单**<br>图标横向轮播 | <img src="demo/ui/03_stopwatch.png" width="240"><br>**秒表**<br>开始 / 停止 / 清除 | <img src="demo/ui/04_flashlight.png" width="240"><br>**手电筒**<br>OFF / ON |
-| <img src="demo/ui/05_mpu6050.png" width="240"><br>**MPU6050 姿态**<br>Roll / Pitch / Yaw | <img src="demo/ui/06_gradienter_menu.png" width="240"><br>**水平仪菜单**<br>水平 / 竖直 / 斜坡 | <img src="demo/ui/07_level.png" width="240"><br>**水平仪**<br>气泡居中即水平 | <img src="demo/ui/08_vertical.png" width="240"><br>**竖直仪**<br>气泡居中即竖直 |
-| <img src="demo/ui/09_slope.png" width="240"><br>**斜坡仪**<br>角度 + 坡度百分比 | <img src="demo/ui/10_emoji.png" width="240"><br>**动态表情**<br>眨眼动画 | <img src="demo/ui/11_game_menu.png" width="240"><br>**小游戏**<br>小恐龙 / 像素小鸟 | <img src="demo/ui/12_weather.png" width="240"><br>**天气·列表**<br>三天预报（C3 数据） |
-| <img src="demo/ui/12b_weather_trend.png" width="240"><br>**温度趋势**<br>多天高/低温曲线（按键翻页） |
-| <img src="demo/ui/13_temp_humi.png" width="240"><br>**温湿度**<br>AHT20 | <img src="demo/ui/14_setting_menu.png" width="240"><br>**设置**<br>进入日期时间设置 | <img src="demo/ui/15_set_date.png" width="240"><br>**设置日期**<br>年 / 月 / 日 | <img src="demo/ui/16_set_time.png" width="240"><br>**设置时间**<br>时 / 分 / 秒 |
-
-> 点开任意图片看大图；完整清单与最新渲染见 [`demo/ui/`](demo/ui/)。
+<p align="center">👉 <a href="demo/ui/showcase.md"><b>查看全部界面大图（详细页面）</b></a>　·　生成脚本见 <a href="tools/ui_render/">tools/ui_render/</a></p>
 
 <a id="arch"></a>
 ## 🏗️ 系统架构
@@ -213,12 +206,4 @@ $<类型>,<seq>,<数据...>*<CRC16>\r\n     // CRC16 为 4 位十六进制（大
 - **OLED 某个汉字显示 "?"**：该字不在字库 `OLED_Data.c` 的 `OLED_CF16x16` 中，需补字模。
 - **AHT20 报 `Code:-1`**：寻址失败，检查 SCL/SDA 是否接反、VCC 是否 3.3V、上拉是否正常。
 
-<a id="author"></a>
-## 👤 致谢与许可
 
-- OLED 驱动与字库格式来自 **江协科技** 教程（jiangxiekeji.com）。
-- 天气数据来自 **心知天气 Seniverse**。
-- 本项目在 v1 工程基础上二次开发，许可证 **MIT**（详见 [LICENSE](LICENSE)）。
-- 作者 / 维护：[@doinnothin](https://github.com/doinnothin) · 仓库：[stm32_Oled_Watch](https://github.com/doinnothin/stm32_Oled_Watch)
-
-<div align="center"><sub>⌚ + 📶 = 一块会看天气的表。玩得开心。</sub></div>
