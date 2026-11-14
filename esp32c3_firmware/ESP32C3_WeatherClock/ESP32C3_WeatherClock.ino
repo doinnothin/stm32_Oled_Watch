@@ -42,6 +42,7 @@ static Preferences prefs;
 static WebServer   server(80);
 static bool        g_needUpdate = false;
 static bool        g_web = false;
+static volatile int g_keyPending = 0;   /* 网页虚拟按键：先记下，后台再发串口，避免 HTTP 卡住 */
 
 /* ============================ 一般不用改 ============================ */
 #define STM32_TX_PIN  4          // ESP32-C3 的 TX，接 STM32 的 RX(PA3)
@@ -417,7 +418,8 @@ static void handleSave()
   server.send(200, "text/html", "<meta charset='utf-8'>已保存，正在刷新天气…（可返回）");
 }
 
-/* 手机虚拟按键：/key?k=1(上) / 2(下) / 3(确认) → 串口 $KEY 帧 */
+/* 手机虚拟按键：/key?k=1(上) / 2(下) / 3(确认) → 串口 $KEY 帧
+   注意：这里只登记，实际发送放到 loop() 里做，避免 HTTP 等待 ACK 造成延迟 */
 static void handleKey()
 {
   String k = server.arg("k");
@@ -428,9 +430,7 @@ static void handleKey()
 
   if (code < 0) { server.send(400, "text/plain", "bad key"); return; }
 
-  char buf[32];
-  snprintf(buf, sizeof(buf), "$KEY,%u,%d", (unsigned)g_seq, code);
-  sendReliable(buf);
+  g_keyPending = code;
   server.send(200, "text/plain", "ok");
 }
 
@@ -506,6 +506,16 @@ void loop()
   {
     char c = (char)STM32Serial.read();
     if (c == 'R' || c == 'r') doUpdate();
+  }
+
+  /* 网页虚拟按键：后台发送（网页已先行返回，不受 ACK 等待影响） */
+  if (g_keyPending)
+  {
+    int code = g_keyPending;
+    g_keyPending = 0;
+    char kb[32];
+    snprintf(kb, sizeof(kb), "$KEY,%u,%d", (unsigned)g_seq, code);
+    sendReliable(kb);
   }
 
   /* 网页保存了城市/key → 立即刷新一次 */
