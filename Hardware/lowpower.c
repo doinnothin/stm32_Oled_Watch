@@ -3,6 +3,15 @@
 #include "Key.h"
 #include "delay.h"
 
+/* ===== 低功耗总开关 =====
+ * 1 = 开启自动息屏 + STOP（正常使用）
+ * 0 = 完全关闭（调试用：不息屏、不进 STOP，SWD 不会断）
+ * 也可以不改这里，改 main.c 里的 LowPower_SetEnabled(0) 运行时关闭。
+ */
+#ifndef LOWPOWER_ENABLE
+#define LOWPOWER_ENABLE 1
+#endif
+
 /* ===== 可调参数 ===== */
 #define LP_IDLE_MS     15000u   /* 首页无操作 15s 后息屏休眠 */
 #define LP_RTC_WAKE_S  10u      /* STOP 期间 RTC 每 10s 醒一次（只醒一下就继续睡） */
@@ -10,7 +19,7 @@
 static volatile uint32_t s_ms = 0;
 static uint32_t s_last_active = 0;
 static uint8_t  s_off = 0;
-static uint8_t  s_enabled = 1;
+static uint8_t  s_enabled = LOWPOWER_ENABLE;
 
 void LowPower_Isr1ms(void) { s_ms++; }
 

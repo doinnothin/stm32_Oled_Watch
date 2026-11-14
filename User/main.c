@@ -43,6 +43,8 @@ int main(void)
 	Timer_Init(); //定时器初始化
 	ESP32C3_Init(); //初始化与 ESP32-C3 的串口（USART2），并请求一次数据
 	LowPower_Init(); //低功耗：按键/RTC 唤醒配置
+	/* 调试时想临时关闭低功耗（不息屏/不进 STOP，SWD 不断），取消下面这行注释即可： */
+	/* LowPower_SetEnabled(0); */
 
 	int clkflag1;
 
