@@ -1,5 +1,6 @@
 #include "esp32c3.h"
 #include "Serial.h"
+#include "Key.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -212,6 +213,14 @@ static void ProcessLine(char *line, uint16_t len)
                 s_tr_count = (uint8_t)k;
                 (void)n;
             }
+        }
+    }
+    else if (strncmp(line, "$KEY,", 5) == 0)
+    {
+        int code = -1;
+        if (sscanf(line + 5, "%d,%d", &seq_i, &code) == 2 && code >= 1 && code <= 3)
+        {
+            Key_Inject((uint8_t)(code - 1), KEY_SINGLE);   /* 1=上 2=下 3=确认 */
         }
     }
     else if (strncmp(line, "$ERR", 4) == 0)

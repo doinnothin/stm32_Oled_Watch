@@ -62,6 +62,19 @@ uint8_t Key_Check(uint8_t n, uint8_t Flag)
 }
 
 /**
+  * 函    数：注入一个按键事件（用于手机网页"虚拟按键"）
+  * 参    数：n 按键编号 0~2（KEY_1~KEY_3）；Flag 事件标志（如 KEY_SINGLE）
+  * 说    明：直接置位 Key_Flag[n]，页面里的 Key_GetNum / Key_Check 会照常读到
+  */
+void Key_Inject(uint8_t n, uint8_t Flag)
+{
+	if (n < KEY_COUNT)
+	{
+		Key_Flag[n] |= Flag;
+	}
+}
+
+/**
   * 函    数：清空所有按键标志（切换页面时调用，避免旧事件带入新页面）
   */
 void Key_Reset(void)

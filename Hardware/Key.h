@@ -22,5 +22,6 @@ uint8_t Key_GetNum(void);
 uint8_t Key_Check(uint8_t n, uint8_t Flag);
 void Key_Reset(void);
 void Key_Tick(void);
+void Key_Inject(uint8_t n, uint8_t Flag);   /* 注入一个按键事件（手机网页虚拟按键用） */
 
 #endif

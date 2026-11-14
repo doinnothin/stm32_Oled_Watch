@@ -24,14 +24,20 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
+#include <ArduinoOTA.h>
+#include <Preferences.h>
 #include <time.h>
 #include <string.h>
 
-/* ============================ 配置区（改成你自己的） ============================ */
-static const char* WIFI_SSID     = "Lumos";      // 你的 WiFi 名称（2.4G）
-static const char* WIFI_PASSWORD = "1213812138";  // 你的 WiFi 密码
-static const char* CITY           = "guangzhou";          // 心知天气城市拼音（小写）
-static const char* SENIVERSE_KEY = "SV7rWPJJVQwUH2Eav";  // 心知天气私钥（自己申请，见 README / 教程）
+/* ===== 配置：保存在 NVS(Preferences)，由 SoftAP 配网页面写入 ===== */
+static String      g_ssid, g_pass, g_city, g_key;
+static Preferences prefs;
+static WebServer   server(80);
+
+#define AP_SSID   "STM32-Watch-Config"   /* 配网热点名称 */
+#define AP_PASS   "12345678"             /* 配网热点密码 */
+#define OTA_HOST  "stm32-watch"          /* OTA 主机名 */
 
 /* ============================ 一般不用改 ============================ */
 #define STM32_TX_PIN  4          // ESP32-C3 的 TX，接 STM32 的 RX(PA3)
@@ -47,13 +53,14 @@ HardwareSerial STM32Serial(1);   // 用 ESP32-C3 的 UART1 和 STM32 通信
 static void wifiConnect()
 {
   if (WiFi.status() == WL_CONNECTED) return;
+  if (g_ssid.length() == 0) { Serial.println("WiFi 未配置（请用 SoftAP 配网）"); return; }
 
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
   WiFi.setTxPower(WIFI_POWER_8_5dBm);   // 和诊断程序保持一致：降发射功率，避免认证帧失真
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.begin(g_ssid.c_str(), g_pass.c_str());
 
-  Serial.printf("正在连接 WiFi: %s ", WIFI_SSID);
+  Serial.printf("正在连接 WiFi: %s ", g_ssid.c_str());
   uint32_t t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000UL)
   {
@@ -149,7 +156,7 @@ static bool fetchWeather(int &wcode, int &temp)
 {
   HTTPClient http;
   String url = String("http://api.seniverse.com/v3/weather/now.json?key=")
-             + SENIVERSE_KEY + "&location=" + CITY + "&language=en&unit=c";
+             + g_key + "&location=" + g_city + "&language=en&unit=c";
 
   if (!http.begin(url)) { Serial.println("天气: http.begin 失败"); return false; }
   http.setTimeout(8000);
@@ -181,7 +188,7 @@ static int fetchForecast(int code[], int hi[], int lo[])
 {
   HTTPClient http;
   String url = String("http://api.seniverse.com/v3/weather/daily.json?key=")
-             + SENIVERSE_KEY + "&location=" + CITY + "&language=en&unit=c&start=0&days=" + String(MAX_DAYS);
+             + g_key + "&location=" + g_city + "&language=en&unit=c&start=0&days=" + String(MAX_DAYS);
   if (!http.begin(url)) { Serial.println("预报: http.begin 失败"); return 0; }
   http.setTimeout(8000);
   if (http.GET() != 200) { http.end(); return 0; }
@@ -367,21 +374,126 @@ static void doUpdate()
   }
 }
 
+/* ============================ 配置页 / 虚拟按键 / OTA ============================ */
+static bool g_configMode = false;
+
+static String pageHtml()
+{
+  String h;
+  h += "<!doctype html><html><head><meta charset='utf-8'>";
+  h += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+  h += "<title>STM32 Watch</title>";
+  h += "<style>body{font-family:-apple-system,Arial;margin:18px;background:#111;color:#eee}";
+  h += "input{width:100%;padding:10px;margin:6px 0;box-sizing:border-box;border-radius:6px;border:1px solid #333;background:#1b1b1b;color:#eee}";
+  h += "button{padding:14px 22px;margin:6px;font-size:18px;border:0;border-radius:10px;background:#2d7ef7;color:#fff}";
+  h += ".row{display:flex;justify-content:center;flex-wrap:wrap}</style></head><body>";
+  h += "<h2>STM32 手表 · ESP32-C3</h2>";
+
+  if (g_configMode)
+  {
+    h += "<p>配网：填写 2.4G WiFi 与心知天气信息</p><form method='POST' action='/save'>";
+    h += "WiFi 名称<input name='ssid' value='" + g_ssid + "'>";
+    h += "WiFi 密码<input name='pass' type='password' value=''>";
+    h += "城市拼音(如 guangzhou)<input name='city' value='" + g_city + "'>";
+    h += "心知 key<input name='key' value='" + g_key + "'>";
+    h += "<button type='submit'>保存并重启</button></form>";
+  }
+  else
+  {
+    h += "<p>已连接：" + WiFi.localIP().toString() + " · RSSI " + String(WiFi.RSSI()) + " dBm</p>";
+  }
+
+  h += "<hr><h3>手机虚拟按键</h3><div class='row'>";
+  h += "<button onclick=\"k('1')\">▲ 上</button>";
+  h += "<button onclick=\"k('3')\">● 确认</button>";
+  h += "<button onclick=\"k('2')\">▼ 下</button></div>";
+  h += "<p style='color:#888'>点按钮 = 在 STM32 上模拟一次对应按键</p>";
+  h += "<script>function k(v){fetch('/key?k='+v);}</script></body></html>";
+  return h;
+}
+
+static void handleRoot() { server.send(200, "text/html", pageHtml()); }
+
+static void handleSave()
+{
+  if (server.hasArg("ssid")) prefs.putString("ssid", server.arg("ssid"));
+  if (server.hasArg("pass")) prefs.putString("pass", server.arg("pass"));
+  if (server.hasArg("city")) prefs.putString("city", server.arg("city"));
+  if (server.hasArg("key"))  prefs.putString("key",  server.arg("key"));
+  server.send(200, "text/html", "<meta charset='utf-8'>已保存，正在重启…");
+  delay(600);
+  ESP.restart();
+}
+
+/* 手机虚拟按键：/key?k=1(上) / 2(下) / 3(确认) → 串口 $KEY 帧 */
+static void handleKey()
+{
+  String k = server.arg("k");
+  int code = -1;
+  if (k == "1" || k == "up")        code = 1;
+  else if (k == "2" || k == "down") code = 2;
+  else if (k == "3" || k == "ok")   code = 3;
+
+  if (code < 0) { server.send(400, "text/plain", "bad key"); return; }
+
+  char buf[32];
+  snprintf(buf, sizeof(buf), "$KEY,%u,%d", (unsigned)g_seq, code);
+  sendReliable(buf);
+  server.send(200, "text/plain", "ok");
+}
+
+static void startWeb()
+{
+  server.on("/", handleRoot);
+  server.on("/key", handleKey);
+  server.on("/save", HTTP_POST, handleSave);
+  server.begin();
+}
+
 /* ============================ setup / loop ============================ */
 void setup()
 {
   Serial.begin(115200);          // USB 调试口
   STM32Serial.begin(UART_BAUD, SERIAL_8N1, STM32_RX_PIN, STM32_TX_PIN);
 
+  prefs.begin("watch", false);
+  g_ssid = prefs.getString("ssid", "");
+  g_pass = prefs.getString("pass", "");
+  g_city = prefs.getString("city", "xinxiang");
+  g_key  = prefs.getString("key", "");
+
   delay(300);
   Serial.println();
   Serial.println("==== ESP32-C3 天气时钟数据源 启动 ====");
+  Serial.printf("配置: ssid=%s  city=%s\n", g_ssid.c_str(), g_city.c_str());
 
-  doUpdate();                    // 开机立刻发一次
+  wifiConnect();
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    g_configMode = false;
+    startWeb();
+    ArduinoOTA.setHostname(OTA_HOST);
+    ArduinoOTA.begin();
+    Serial.print("Web / OTA: http://");
+    Serial.println(WiFi.localIP());
+    doUpdate();                    // 开机立刻发一次
+  }
+  else
+  {
+    g_configMode = true;
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(AP_SSID, AP_PASS);
+    startWeb();
+    Serial.println("SoftAP 已开启：手机连 \"" AP_SSID "\" 后打开 http://192.168.4.1 配网");
+  }
 }
 
 void loop()
 {
+  server.handleClient();
+  if (WiFi.status() == WL_CONNECTED) ArduinoOTA.handle();
+
   /* STM32 可以发 'R' 主动要求刷新一次（PA2 -> GPIO5） */
   while (STM32Serial.available())
   {
@@ -389,15 +501,18 @@ void loop()
     if (c == 'R' || c == 'r') doUpdate();
   }
 
-  static uint32_t last = 0;
-  static uint32_t bootMs = 0;
-  if (bootMs == 0) bootMs = millis();
-  /* 开机前 3 分钟每 20 秒多发一次，保证 STM32 上电后一定能收到；之后 10 分钟一次 */
-  uint32_t interval = (millis() - bootMs < 180000UL) ? 20000UL : UPDATE_INTERVAL_MS;
-  if (millis() - last >= interval)
+  if (!g_configMode && WiFi.status() == WL_CONNECTED)
   {
-    last = millis();
-    doUpdate();
+    static uint32_t last = 0;
+    static uint32_t bootMs = 0;
+    if (bootMs == 0) bootMs = millis();
+    /* 开机前 3 分钟每 20 秒多发一次；之后 10 分钟一次 */
+    uint32_t interval = (millis() - bootMs < 180000UL) ? 20000UL : UPDATE_INTERVAL_MS;
+    if (millis() - last >= interval)
+    {
+      last = millis();
+      doUpdate();
+    }
   }
   delay(20);
 }
