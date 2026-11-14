@@ -9,10 +9,19 @@
 static volatile uint32_t s_ms = 0;
 static uint32_t s_last_active = 0;
 static uint8_t  s_off = 0;
+static uint8_t  s_enabled = 1;
 
 void LowPower_Isr1ms(void) { s_ms++; }
 
 uint8_t LowPower_IsOff(void) { return s_off; }
+
+uint8_t LowPower_Tick(void) { LowPower_Poll(); return s_off; }
+
+void LowPower_SetEnabled(uint8_t en)
+{
+    s_enabled = en;
+    if (!en) { s_off = 0; s_last_active = s_ms; }
+}
 
 /* 按键 PB12/13/15 按下为低 */
 static uint8_t KeyPressed(void)
@@ -92,6 +101,8 @@ static void EnterSleep(void)
 
 void LowPower_Poll(void)
 {
+    if (!s_enabled) { s_off = 0; s_last_active = s_ms; return; }
+
     if (KeyPressed())
     {
         s_off = 0;
@@ -113,7 +124,7 @@ void LowPower_Poll(void)
     {
         s_off = 0;                            /* 按键唤醒：亮屏 */
         s_last_active = s_ms;
-        OLED_Init();                          /* 重新初始化显示（含开显示+清屏） */
+        OLED_WriteCommand(0xAF);              /* 开显示（SSD1306 GDDRAM 内容仍在，直接恢复） */
     }
     /* 否则是 RTC 唤醒：保持 s_off=1，下一页继续睡 */
 }

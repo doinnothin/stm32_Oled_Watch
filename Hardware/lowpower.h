@@ -10,7 +10,9 @@
  */
 void    LowPower_Init(void);
 void    LowPower_Isr1ms(void);   /* 在 TIM2 的 1ms 中断里调用 */
-void    LowPower_Poll(void);     /* 首页循环里反复调用 */
+void    LowPower_Poll(void);     /* 首页/各页面循环里反复调用 */
+uint8_t LowPower_Tick(void);     /* = Poll + 返回 1 表示当前息屏(应跳过绘制) */
+void    LowPower_SetEnabled(uint8_t en); /* 0=在本页面禁止自动休眠(如秒表/游戏) */
 uint8_t LowPower_IsOff(void);    /* 1 = 当前处于息屏/睡眠状态 */
 
 #endif

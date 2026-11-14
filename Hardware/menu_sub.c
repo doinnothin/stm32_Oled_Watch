@@ -14,6 +14,7 @@
 #include "dino.h"
 #include "bird.h"
 #include "esp32c3.h"
+#include "lowpower.h"
 
 extern uint8_t KeyNum; // 声明外部全局变量（真正定义在 menu.c），此处不能再赋值，否则会重复定义
 
@@ -139,6 +140,7 @@ int LED(void)
 {
     while (1)
     {
+        if (LowPower_Tick()) continue;
         KeyNum = Key_GetNum();
         uint8_t led_flag_temp = 0;
         if (KeyNum == 1) // 上一项
@@ -266,6 +268,7 @@ int MPU6050(void)
     Key_Reset();
     while (1)
     {
+        if (LowPower_Tick()) continue;
         if (Key_Check(KEY_2, KEY_LONG)) MPU6050_Calibrate();   // 长按K2校准
 
         if (Key_Check(KEY_3, KEY_SINGLE))                      // K3返回
@@ -373,6 +376,7 @@ int Gradienter_Level(void)
     Key_Reset();
     while (1)
     {
+        if (LowPower_Tick()) continue;
         if (Key_Check(KEY_2, KEY_LONG)) MPU6050_Calibrate();
         if (Key_Check(KEY_3, KEY_SINGLE)) { OLED_Clear(); OLED_Update(); Key_Reset(); return 0; }
         OLED_Clear();
@@ -386,6 +390,7 @@ int Gradienter_Vertical(void)
     Key_Reset();
     while (1)
     {
+        if (LowPower_Tick()) continue;
         if (Key_Check(KEY_2, KEY_LONG)) MPU6050_Calibrate();
         if (Key_Check(KEY_3, KEY_SINGLE)) { OLED_Clear(); OLED_Update(); Key_Reset(); return 0; }
         OLED_Clear();
@@ -399,6 +404,7 @@ int Gradienter_Slope(void)
     Key_Reset();
     while (1)
     {
+        if (LowPower_Tick()) continue;
         if (Key_Check(KEY_2, KEY_LONG)) MPU6050_Calibrate();
         if (Key_Check(KEY_3, KEY_SINGLE)) { OLED_Clear(); OLED_Update(); Key_Reset(); return 0; }
         OLED_Clear();
@@ -422,6 +428,7 @@ int Gradienter(void)
 {
     while (1)
     {
+        if (LowPower_Tick()) continue;
         KeyNum = Key_GetNum();
         uint8_t grad_flag_temp = 0;
         if (KeyNum == 1)      //上一项
@@ -512,6 +519,7 @@ int Emoji(void)
 {
 	while(1)
 	{
+	    if (LowPower_Tick()) continue;
 		KeyNum=Key_GetNum();
 		if(KeyNum==3)
 		{
@@ -569,6 +577,7 @@ int AHT20_Page(void)
 {
     while (1)
     {
+        if (LowPower_Tick()) continue;
         KeyNum = Key_GetNum();
         if (KeyNum == 3)
         {

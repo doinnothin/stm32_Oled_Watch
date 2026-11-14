@@ -3,6 +3,7 @@
 #include "OLED_Data.h"
 #include "Key.h"
 #include "esp32c3.h"
+#include "lowpower.h"
 #include "delay.h"
 #include <string.h>
 
@@ -174,6 +175,7 @@ int Weather(void)
 
     while (1)
     {
+        if (LowPower_Tick()) continue;
         KeyNum = Key_GetNum();
 
         if (KeyNum == 3)

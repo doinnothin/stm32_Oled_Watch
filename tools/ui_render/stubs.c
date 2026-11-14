@@ -105,6 +105,8 @@ void Pedometer_Reset(void) {}
 void LowPower_Init(void) {}
 void LowPower_Isr1ms(void) {}
 void LowPower_Poll(void) {}
+uint8_t LowPower_Tick(void) { return 0; }
+void LowPower_SetEnabled(uint8_t en) { (void)en; }
 uint8_t LowPower_IsOff(void) { return 0; }
 
 /* ---------------------------------------------------------------- Games (stubbed) */
